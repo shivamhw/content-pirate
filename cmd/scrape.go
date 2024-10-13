@@ -44,12 +44,14 @@ type AuthCfg struct {
 }
 
 type scrapeCfg struct {
-	dstDir     string
-	authCfg    string
-	subreddits string
-	postId     string
-	duration   string
-	skipVideo  bool
+	dstDir       string
+	authCfg      string
+	subreddits   string
+	postId       string
+	duration     string
+	skipVideo    bool
+	cleanOnStart bool
+	combineDir   bool
 }
 
 type Mediums struct {
@@ -104,6 +106,8 @@ func init() {
 	scrapeCmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
 	scrapeCmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
 	scrapeCmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
+	scrapeCmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
+	scrapeCmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
 
 }
 
@@ -118,11 +122,19 @@ func getCfgFromJson(filePath string, v interface{}) {
 }
 
 func (s scrapper) createStructure() {
+	if sCfg.cleanOnStart {
+		err := os.RemoveAll(s.dstPath.getBasePath())
+		if err != nil {
+			log.Print("err while deleting dir structure ", err)
+		}else{
+			log.Print("cleanup success")
+		}
+	}
 	for _, f := range s.Subreddits {
-		log.Println("creating ", s.dstPath.getSubredditPath(f))
+		// log.Println("creating ", s.dstPath.getSubredditPath(f))
 		log.Println("creating ", s.dstPath.getImgPath(f))
 		log.Println("creating ", s.dstPath.getVidPath(f))
-		s.DstStore.CreateDir(s.dstPath.getSubredditPath(f))
+		// s.DstStore.CreateDir(s.dstPath.getSubredditPath(f))
 		s.DstStore.CreateDir(s.dstPath.getImgPath(f))
 		s.DstStore.CreateDir(s.dstPath.getVidPath(f))
 	}
@@ -140,7 +152,7 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 			VidPath:  VIDS,
 		},
 	}
-	// load auth
+	// load auth1
 	getCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
 	getCfgFromJson(sCfg.subreddits, &scr.Subreddits)
@@ -427,11 +439,22 @@ func (d DstPath) getSubredditPath(r string) string {
 	return filepath.Join(d.BasePath, r)
 }
 
+
+func (d DstPath) getBasePath() string {
+	return d.BasePath
+}
+
 func (d DstPath) getImgPath(r string) string {
+	if sCfg.combineDir {
+		return filepath.Join(d.BasePath, d.ImgPath)
+	}
 	return filepath.Join(d.BasePath, r, d.ImgPath)
 }
 
 func (d DstPath) getVidPath(r string) string {
+	if sCfg.combineDir {
+		return filepath.Join(d.BasePath, d.VidPath)
+	}
 	return filepath.Join(d.BasePath, r, d.VidPath)
 }
 
