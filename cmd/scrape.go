@@ -37,8 +37,10 @@ type DstPath struct {
 }
 
 type AuthCfg struct {
-	ClientId string `json:"clientId"`
-	Key      string `json:"key"`
+	ID       string `json:"id"`
+	Secret   string `json:"secret"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type scrapeCfg struct {
@@ -102,7 +104,6 @@ func init() {
 	scrapeCmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
 	scrapeCmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
 	scrapeCmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
-
 
 }
 
@@ -314,8 +315,8 @@ func (s scrapper) vidWorker(id int, m *Mediums) {
 }
 
 func (s scrapper) startWorkers(m *Mediums) {
-	SUBWORKER := 2
-	IMGWORKER := 10
+	SUBWORKER := 10
+	IMGWORKER := 20
 	VIDWORKER := 1
 	var sub_wg sync.WaitGroup
 

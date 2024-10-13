@@ -47,6 +47,8 @@ func init() {
 	// when this action is called directly.
 	rootCmd.AddCommand(helloCmd)
 	rootCmd.AddCommand(scrapeCmd)
+	rootCmd.AddCommand(userCmd)
+
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

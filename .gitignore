@@ -1,3 +1,5 @@
 /download
 *.json
 .vscode
+rawSubs
+reddit-pirate
