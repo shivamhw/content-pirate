@@ -52,6 +52,9 @@ type scrapeCfg struct {
 	skipVideo    bool
 	cleanOnStart bool
 	combineDir   bool
+	imgWorker	 int
+	vidWorker	 int
+	redWorker    int
 }
 
 type Mediums struct {
@@ -108,7 +111,9 @@ func init() {
 	scrapeCmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
 	scrapeCmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
 	scrapeCmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
-
+	scrapeCmd.Flags().IntVar(&sCfg.imgWorker, "img-worker", 10, "nof img proccesing worker")
+	scrapeCmd.Flags().IntVar(&sCfg.vidWorker, "vid-worker", 5, "nof vid proccesing worker")
+	scrapeCmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 10, "nof reddit proccesing worker")
 }
 
 func getCfgFromJson(filePath string, v interface{}) {
@@ -131,10 +136,8 @@ func (s scrapper) createStructure() {
 		}
 	}
 	for _, f := range s.Subreddits {
-		// log.Println("creating ", s.dstPath.getSubredditPath(f))
 		log.Println("creating ", s.dstPath.getImgPath(f))
 		log.Println("creating ", s.dstPath.getVidPath(f))
-		// s.DstStore.CreateDir(s.dstPath.getSubredditPath(f))
 		s.DstStore.CreateDir(s.dstPath.getImgPath(f))
 		s.DstStore.CreateDir(s.dstPath.getVidPath(f))
 	}
@@ -142,8 +145,6 @@ func (s scrapper) createStructure() {
 
 func scrapperHandler(cmd *cobra.Command, args []string) {
 	scr := scrapper{
-		// TODO: add client auth
-		reddit: reddit.DefaultClient(),
 		sCfg:   &sCfg,
 		ctx:    context.Background(),
 		dstPath: DstPath{
@@ -156,7 +157,15 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 	getCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
 	getCfgFromJson(sCfg.subreddits, &scr.Subreddits)
-	// create dir struct
+	// create auth
+	credentials := reddit.Credentials{ID: scr.AuthCfg.ID, Secret: scr.AuthCfg.Secret, Username: scr.AuthCfg.Username, Password: scr.AuthCfg.Password}
+	c, err := reddit.NewClient(credentials)
+	if err != nil {
+		log.Printf("err creating client %s, using default client", err)
+		c = reddit.DefaultClient()
+	}
+	scr.reddit = c
+	//creating dir struct
 	scr.DstStore = store.FileStore{Dir: sCfg.dstDir}
 	scr.createStructure()
 	scr.Run()
@@ -220,13 +229,11 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 		final_posts = append(final_posts, post)
 		return &final_posts, nil
 	}
-
-	// if p.Media.RedditVideo.FallbackURL != ""
 	return nil, fmt.Errorf("can not parse %s this postURL %s", p.ID, p.URL)
 
 }
 
-func (s scrapper) getTopPost(subreddit string) ([]Post, error) {
+func (s scrapper) EmitPosts(subreddit string) ([]Post, error) {
 	var final_posts []Post
 	nextToken := ""
 	for {
@@ -253,7 +260,6 @@ func (s scrapper) getTopPost(subreddit string) ([]Post, error) {
 				log.Printf("post %s: %s", p.Title, err)
 				continue
 			}
-			// log.Printf("adding %s post to processing", p.Title)
 			final_posts = append(final_posts, *post...)
 		}
 
@@ -265,11 +271,10 @@ func (s scrapper) getTopPost(subreddit string) ([]Post, error) {
 	return final_posts, nil
 }
 
-func (s scrapper) processImg(j Job) {
-	//download file
+func (s scrapper) downloadJob(j Job) error {
 	resp, err := http.Get(j.src)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Print(fmt.Errorf("failed to download %s because %s code", j.src, err))
+		return fmt.Errorf("failed to download %s because %s code", j.src, err)
 	}
 	defer resp.Body.Close()
 
@@ -277,28 +282,35 @@ func (s scrapper) processImg(j Job) {
 	log.Printf("saving %s to filesystem ", j.name)
 	err = s.DstStore.Write(filepath.Join(j.dst, j.name), resp.Body)
 	if err != nil {
-		log.Print(fmt.Errorf("failed to save file %s to %s as %s", j.name, j.dst, err))
+		return fmt.Errorf("failed to save file %s to %s as %s", j.name, j.dst, err)
+	}
+	return nil
+}
+
+func (s scrapper) processImg(j Job) {
+	//download file
+	if err := s.downloadJob(j); err != nil {
+		log.Printf("failed while downloading imgs %s ", err)
 	}
 	atomic.AddInt64(&imgCounter, 1)
 }
-func (s scrapper) processVid(j Job) {
-	time.Sleep(2 * time.Second)
-	atomic.AddInt64(&vidCounter, 1)
 
+func (s scrapper) processVid(j Job) {
+	if err := s.downloadJob(j); err != nil {
+		log.Printf("failed while downloading vid %s ", err)
+	}
+	atomic.AddInt64(&vidCounter, 1)
 }
 
 func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	defer wg.Done()
 	fmt.Printf("started sub worker %d\n", id)
 	for r := range m.subq {
-		fmt.Println(id, " processing subreddit ", r)
-		posts, err := s.getTopPost(r)
+		posts, err := s.EmitPosts(r)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
-		// fmt.Printf("%d GOT THIS MANY POST %d \n", id, len(posts))
 		for _, p := range posts {
-			// fmt.Println("Pusnging this to main post q ", p.title)
 			m.postq <- p
 		}
 	}
@@ -327,32 +339,25 @@ func (s scrapper) vidWorker(id int, m *Mediums) {
 }
 
 func (s scrapper) startWorkers(m *Mediums) {
-	SUBWORKER := 10
-	IMGWORKER := 20
-	VIDWORKER := 1
 	var sub_wg sync.WaitGroup
 
-	//once all the sub worker are complete we can say there will be no more post
-	for i := 0; i < SUBWORKER; i++ {
+	for i := 0; i < sCfg.redWorker; i++ {
 		sub_wg.Add(1)
 		go s.subWorker(i, m, &sub_wg)
 	}
 
-	for i := 0; i < IMGWORKER; i++ {
+	for i := 0; i < sCfg.imgWorker; i++ {
 		m.swg.Add(1)
 		go s.imgWorker(i, m)
 	}
 
-	for i := 0; i < VIDWORKER; i++ {
+	for i := 0; i < sCfg.vidWorker; i++ {
 		m.swg.Add(1)
 		go s.vidWorker(i, m)
 	}
 
 	sub_wg.Wait()
-	// fmt.Println("COMPLETED SUB WORKER CLOSE POST AS NO WRITE WILL HAPPEN NOW")
 	close(m.postq)
-	// m.swg.Wait()
-
 }
 
 func (s scrapper) getPostById(id string) {
@@ -399,19 +404,16 @@ func (s scrapper) Run() {
 			m.subq <- s
 		}
 	}(&mwg)
-	// fmt.Println("STARIGN OOOOPPPP")
 LOOP:
 	for {
 		select {
 		case v, ok := <-m.postq:
-			// fmt.Println("GOT A POST ", v.title)
 			if !ok {
 				close(m.imgq)
 				close(m.vidq)
 				break LOOP
 			}
 			if v.media == VIDS {
-				// fmt.Println("consuming vid")
 				m.vidq <- Job{
 					src:  v.link,
 					dst:  s.dstPath.getVidPath(v.subreddit),
@@ -420,7 +422,6 @@ LOOP:
 			}
 
 			if v.media == IMGS {
-				// fmt.Println("consuming img")
 				m.imgq <- Job{
 					src:  v.link,
 					dst:  s.dstPath.getImgPath(v.subreddit),
@@ -431,14 +432,12 @@ LOOP:
 			break LOOP
 		}
 	}
-	// mwg.Wait()
 	m.swg.Wait()
 }
 
 func (d DstPath) getSubredditPath(r string) string {
 	return filepath.Join(d.BasePath, r)
 }
-
 
 func (d DstPath) getBasePath() string {
 	return d.BasePath
