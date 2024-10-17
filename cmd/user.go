@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vartanbeno/go-reddit/v2/reddit"
+	. "github.com/shivamhw/reddit-pirate/commons"
+
 )
 
 type userClient struct {
@@ -39,7 +41,7 @@ func init() {
 }
 
 func userCmdInit(cmd *cobra.Command, args []string) {
-	getCfgFromJson(uCfg.authCfg, &aCfg)
+	GetCfgFromJson(uCfg.authCfg, &aCfg)
 	credentials := reddit.Credentials{ID: aCfg.ID, Secret: aCfg.Secret, Username: aCfg.Username, Password: aCfg.Password}
 	c, err := reddit.NewClient(credentials)
 	if err != nil {

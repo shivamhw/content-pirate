@@ -2,38 +2,30 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"log"
-
+	. "github.com/shivamhw/reddit-pirate/commons"
 	"github.com/shivamhw/reddit-pirate/store"
 	"github.com/spf13/cobra"
 	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
 
 type scrapper struct {
-	DstStore   store.Store
-	AuthCfg    AuthCfg
-	Subreddits []string
-	reddit     *reddit.Client
-	sCfg       *scrapeCfg
-	ctx        context.Context
-	dstPath    DstPath
-}
-
-type DstPath struct {
-	ImgPath  string
-	VidPath  string
-	BasePath string
+	DstStore store.Store
+	AuthCfg  AuthCfg
+	SourceAc []string
+	reddit   *reddit.Client
+	sCfg     *scrapeCfg
+	ctx      context.Context
+	dstPath  *DstPath
 }
 
 type AuthCfg struct {
@@ -52,8 +44,9 @@ type scrapeCfg struct {
 	skipVideo    bool
 	cleanOnStart bool
 	combineDir   bool
-	imgWorker	 int
-	vidWorker	 int
+	collection   bool
+	imgWorker    int
+	vidWorker    int
 	redWorker    int
 }
 
@@ -66,97 +59,67 @@ type Mediums struct {
 	post_done chan bool
 }
 
-type Job struct {
-	src  string
-	dst  string
-	name string
-}
-
-type Post struct {
-	media     string
-	link      string
-	title     string
-	id        string
-	subreddit string
-	ext       string
-}
-
-const (
-	IMGS = "imgs"
-	VIDS = "vids"
-)
-
 var (
-	IMG_SUFFIX = []string{".jpg", ".jpeg", ".png", ".gif"}
-	VID_SUFFIX = []string{".mp4"}
 	sCfg       scrapeCfg
 	aCfg       AuthCfg
 	imgCounter int64
 	vidCounter int64
 )
 
-var scrapeCmd = &cobra.Command{
-	Use:   "scrape",
-	Long:  "Scrapes subreddit for videos and imgs",
-	Short: "scrapes subreddit",
-	Run:   scrapperHandler,
-}
-
-func init() {
-	scrapeCmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
-	scrapeCmd.Flags().StringVar(&sCfg.subreddits, "subs", "./subreddits.json", "list of subreddits")
-	scrapeCmd.Flags().StringVar(&sCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
-	scrapeCmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
-	scrapeCmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
-	scrapeCmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
-	scrapeCmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
-	scrapeCmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
-	scrapeCmd.Flags().IntVar(&sCfg.imgWorker, "img-worker", 10, "nof img proccesing worker")
-	scrapeCmd.Flags().IntVar(&sCfg.vidWorker, "vid-worker", 5, "nof vid proccesing worker")
-	scrapeCmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 10, "nof reddit proccesing worker")
-}
-
-func getCfgFromJson(filePath string, v interface{}) {
-	file, _ := os.Open(filePath)
-	defer file.Close()
-
-	data, _ := io.ReadAll(file)
-	if err := json.Unmarshal(data, v); err != nil {
-		log.Fatal("fat gta")
+func scrapeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "scrape",
+		Long:  "Scrapes subreddit for videos and imgs",
+		Short: "scrapes subreddit",
+		Run:   scrapperHandler,
 	}
+	cmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
+	cmd.Flags().StringVar(&sCfg.subreddits, "subs", "./subreddits.json", "list of subreddits")
+	cmd.Flags().StringVar(&sCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
+	cmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
+	cmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
+	cmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
+	cmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
+	cmd.Flags().BoolVar(&sCfg.collection, "collection", false, "download full collection")
+	cmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
+	cmd.Flags().IntVar(&sCfg.imgWorker, "img-worker", 10, "nof img proccesing worker")
+	cmd.Flags().IntVar(&sCfg.vidWorker, "vid-worker", 5, "nof vid proccesing worker")
+	cmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 10, "nof reddit proccesing worker")
+	return cmd
 }
 
 func (s scrapper) createStructure() {
 	if sCfg.cleanOnStart {
-		err := os.RemoveAll(s.dstPath.getBasePath())
+		err := s.DstStore.CleanAll(s.dstPath.GetBasePath())
 		if err != nil {
 			log.Print("err while deleting dir structure ", err)
-		}else{
+		} else {
 			log.Print("cleanup success")
 		}
 	}
-	for _, f := range s.Subreddits {
-		log.Println("creating ", s.dstPath.getImgPath(f))
-		log.Println("creating ", s.dstPath.getVidPath(f))
-		s.DstStore.CreateDir(s.dstPath.getImgPath(f))
-		s.DstStore.CreateDir(s.dstPath.getVidPath(f))
+	for _, f := range s.SourceAc {
+		log.Println("creating ", s.dstPath.GetImgPath(f))
+		log.Println("creating ", s.dstPath.GetVidPath(f))
+		s.DstStore.CreateDir(s.dstPath.GetImgPath(f))
+		s.DstStore.CreateDir(s.dstPath.GetVidPath(f))
 	}
 }
 
 func scrapperHandler(cmd *cobra.Command, args []string) {
 	scr := scrapper{
-		sCfg:   &sCfg,
-		ctx:    context.Background(),
-		dstPath: DstPath{
-			BasePath: sCfg.dstDir,
-			ImgPath:  IMGS,
-			VidPath:  VIDS,
+		sCfg: &sCfg,
+		ctx:  context.Background(),
+		dstPath: &DstPath{
+			BasePath:   sCfg.dstDir,
+			ImgPath:    IMGS,
+			VidPath:    VIDS,
+			CombineDir: sCfg.combineDir,
 		},
 	}
 	// load auth1
-	getCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
+	GetCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
-	getCfgFromJson(sCfg.subreddits, &scr.Subreddits)
+	GetCfgFromJson(sCfg.subreddits, &scr.SourceAc)
 	// create auth
 	credentials := reddit.Credentials{ID: scr.AuthCfg.ID, Secret: scr.AuthCfg.Secret, Username: scr.AuthCfg.Username, Password: scr.AuthCfg.Password}
 	c, err := reddit.NewClient(credentials)
@@ -188,18 +151,22 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 	if strings.Contains(p.URL, "/gallery/") {
 		log.Print("found gallery ", p.URL)
 		for _, item := range p.GalleryData.Items {
-			link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, getMIME(p.MediaMetadata[item.MediaID]))
+			link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, GetMIME(p.MediaMetadata[item.MediaID].MIME))
 			log.Printf("created link %s for gal %s %s", link, p.Title, item.MediaID)
 			if isImgLink(link) {
 				post := Post{
-					id:        p.ID,
-					title:     fmt.Sprintf("%s_GAL_%s", p.Title, item.MediaID[:len(item.MediaID)-3]),
-					media:     IMGS,
-					ext:       getMIME(p.MediaMetadata[item.MediaID]),
-					link:      link,
-					subreddit: subreddit,
+					Id:        p.ID,
+					Title:     fmt.Sprintf("%s_GAL_%s", p.Title, item.MediaID[:len(item.MediaID)-3]),
+					MediaType: IMGS,
+					Ext:       GetMIME(p.MediaMetadata[item.MediaID].MIME),
+					SrcLink:   link,
+					SourceAc:  subreddit,
 				}
 				final_posts = append(final_posts, post)
+				if !sCfg.collection {
+					log.Println("not downloading full collection")
+					break
+				}
 			}
 		}
 		return &final_posts, nil
@@ -207,24 +174,24 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 
 	if isImgLink(p.URL) {
 		post := Post{
-			id:        p.ID,
-			title:     p.Title,
-			media:     IMGS,
-			ext:       strings.Split(p.URL, ".")[len(strings.Split(p.URL, "."))-1],
-			link:      p.URL,
-			subreddit: subreddit,
+			Id:        p.ID,
+			Title:     p.Title,
+			MediaType: IMGS,
+			Ext:       strings.Split(p.URL, ".")[len(strings.Split(p.URL, "."))-1],
+			SrcLink:   p.URL,
+			SourceAc:  subreddit,
 		}
 		final_posts = append(final_posts, post)
 		return &final_posts, nil
 	}
 	if !sCfg.skipVideo && p.Media.RedditVideo.FallbackURL != "" {
 		post := Post{
-			id:        p.ID,
-			title:     p.Title,
-			media:     VIDS,
-			link:      p.Media.RedditVideo.FallbackURL,
-			ext:       "mp4",
-			subreddit: subreddit,
+			Id:        p.ID,
+			Title:     p.Title,
+			MediaType: VIDS,
+			SrcLink:   p.Media.RedditVideo.FallbackURL,
+			Ext:       "mp4",
+			SourceAc:  subreddit,
 		}
 		final_posts = append(final_posts, post)
 		return &final_posts, nil
@@ -272,17 +239,17 @@ func (s scrapper) EmitPosts(subreddit string) ([]Post, error) {
 }
 
 func (s scrapper) downloadJob(j Job) error {
-	resp, err := http.Get(j.src)
+	resp, err := http.Get(j.Src)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download %s because %s code", j.src, err)
+		return fmt.Errorf("failed to download %s because %s code", j.Src, err)
 	}
 	defer resp.Body.Close()
 
 	//save to dir
-	log.Printf("saving %s to filesystem ", j.name)
-	err = s.DstStore.Write(filepath.Join(j.dst, j.name), resp.Body)
+	log.Printf("saving %s to filesystem ", j.Name)
+	err = s.DstStore.Write(filepath.Join(j.Dst, j.Name), resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to save file %s to %s as %s", j.name, j.dst, err)
+		return fmt.Errorf("failed to save file %s to %s as %s", j.Name, j.Dst, err)
 	}
 	return nil
 }
@@ -321,7 +288,7 @@ func (s scrapper) imgWorker(id int, m *Mediums) {
 	defer m.swg.Done()
 	fmt.Println("starting img woker ", id)
 	for j := range m.imgq {
-		fmt.Println("processing img ", j.name)
+		fmt.Println("processing img ", j.Name)
 		s.processImg(j)
 	}
 	fmt.Println("Exited img worker ", id)
@@ -331,7 +298,7 @@ func (s scrapper) vidWorker(id int, m *Mediums) {
 	defer m.swg.Done()
 	fmt.Println("starting vid woker ", id)
 	for j := range m.vidq {
-		fmt.Println("processing VIDEO ", j.name, j.src)
+		fmt.Println("processing VIDEO ", j.Name, j.Src)
 		s.processVid(j)
 	}
 	fmt.Println("Exited vid worker ", id)
@@ -399,7 +366,7 @@ func (s scrapper) Run() {
 		defer func() {
 			close(m.subq)
 		}()
-		for _, s := range s.Subreddits {
+		for _, s := range s.SourceAc {
 			fmt.Println("scrapping ", s)
 			m.subq <- s
 		}
@@ -413,19 +380,19 @@ LOOP:
 				close(m.vidq)
 				break LOOP
 			}
-			if v.media == VIDS {
+			if v.MediaType == VIDS {
 				m.vidq <- Job{
-					src:  v.link,
-					dst:  s.dstPath.getVidPath(v.subreddit),
-					name: fmt.Sprintf("%s_%s.%s", v.id, v.title, v.ext),
+					Src:  v.SrcLink,
+					Dst:  s.dstPath.GetVidPath(v.SourceAc),
+					Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
 				}
 			}
 
-			if v.media == IMGS {
+			if v.MediaType == IMGS {
 				m.imgq <- Job{
-					src:  v.link,
-					dst:  s.dstPath.getImgPath(v.subreddit),
-					name: fmt.Sprintf("%s_%s.%s", v.id, v.title, v.ext),
+					Src:  v.SrcLink,
+					Dst:  s.dstPath.GetImgPath(v.SourceAc),
+					Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
 				}
 			}
 		case <-m.post_done:
@@ -433,34 +400,4 @@ LOOP:
 		}
 	}
 	m.swg.Wait()
-}
-
-func (d DstPath) getSubredditPath(r string) string {
-	return filepath.Join(d.BasePath, r)
-}
-
-func (d DstPath) getBasePath() string {
-	return d.BasePath
-}
-
-func (d DstPath) getImgPath(r string) string {
-	if sCfg.combineDir {
-		return filepath.Join(d.BasePath, d.ImgPath)
-	}
-	return filepath.Join(d.BasePath, r, d.ImgPath)
-}
-
-func (d DstPath) getVidPath(r string) string {
-	if sCfg.combineDir {
-		return filepath.Join(d.BasePath, d.VidPath)
-	}
-	return filepath.Join(d.BasePath, r, d.VidPath)
-}
-
-func getMIME(media reddit.MediaData) string {
-	mime := strings.Split(media.MIME, "/")
-	if len(mime) == 1 {
-		return "jpg"
-	}
-	return mime[1]
 }
