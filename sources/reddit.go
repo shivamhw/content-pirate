@@ -26,23 +26,23 @@ type authCfg struct {
 }
 
 type RedditClientOpts struct {
-	CfgPath       string
-	ctx           context.Context
-	duration      string
-	skipCollection bool
+	CfgPath        string
+	Ctx            context.Context
+	Duration       string
+	SkipCollection bool
 }
 
 func NewRedditClient(opts RedditClientOpts) *RedditClient {
 	redditClient := &RedditClient{
 		aCfg: &authCfg{},
-		ctx:  opts.ctx,
+		ctx:  opts.Ctx,
 		opts: &opts,
 	}
 	if opts.CfgPath == "" {
 		log.Printf("no reddit config passed using default client")
 		return redditClient
 	}
-	GetCfgFromJson(opts.CfgPath, redditClient.aCfg)
+	ReadFromJson(opts.CfgPath, redditClient.aCfg)
 	// create auth
 	credentials := reddit.Credentials{
 		ID:       redditClient.aCfg.ID,
@@ -88,7 +88,7 @@ func (r *RedditClient) convertToPosts(rposts []*reddit.Post, subreddit string) (
 						SourceAc:  subreddit,
 					}
 					posts = append(posts, post)
-					if !r.opts.skipCollection {
+					if !r.opts.SkipCollection {
 						log.Println("not downloading full collection")
 						break
 					}
@@ -134,7 +134,7 @@ func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
 				Limit: 100,
 				After: nextToken,
 			},
-			Time: r.opts.duration,
+			Time: r.opts.Duration,
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {

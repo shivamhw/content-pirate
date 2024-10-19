@@ -16,10 +16,10 @@ func GetMIME(media string) string {
 	return mime[1]
 }
 
-func GetExtFromLink(link string) (string){
-	return strings.Split(link, ".")[len(link)-1]
+func GetExtFromLink(link string) string {
+	return strings.Split(link, ".")[len(strings.Split(link, "."))-1]
 }
-func GetCfgFromJson(filePath string, v interface{}) {
+func ReadFromJson(filePath string, v interface{}) {
 	file, _ := os.Open(filePath)
 	defer file.Close()
 	data, _ := io.ReadAll(file)

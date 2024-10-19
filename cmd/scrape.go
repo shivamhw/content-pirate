@@ -3,29 +3,25 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
+	. "github.com/shivamhw/reddit-pirate/commons"
+	"github.com/shivamhw/reddit-pirate/sources"
+	"github.com/shivamhw/reddit-pirate/store"
+	"github.com/spf13/cobra"
 	"log"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	. "github.com/shivamhw/reddit-pirate/commons"
-	"github.com/shivamhw/reddit-pirate/store"
-	"github.com/spf13/cobra"
-	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
 
 type scrapper struct {
-	DstStore store.Store
-	AuthCfg  AuthCfg
-	SourceAc []string
-	reddit   *reddit.Client
-	sCfg     *scrapeCfg
-	ctx      context.Context
-	dstPath  *DstPath
+	SourceStore sources.Source
+	DstStore    store.Store
+	AuthCfg     AuthCfg
+	SourceAc    []string
+	sCfg        *scrapeCfg
+	ctx         context.Context
+	dstPath     *DstPath
 }
 
 type AuthCfg struct {
@@ -58,7 +54,6 @@ type Mediums struct {
 	imgq      chan Job
 	vidq      chan Job
 	swg       sync.WaitGroup
-	post_done chan bool
 }
 
 var (
@@ -122,118 +117,22 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 		},
 	}
 	// load auth
-	GetCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
+	ReadFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
-	GetCfgFromJson(sCfg.subreddits, &scr.SourceAc)
+	ReadFromJson(sCfg.subreddits, &scr.SourceAc)
 	// create auth
-	credentials := reddit.Credentials{ID: scr.AuthCfg.ID, Secret: scr.AuthCfg.Secret, Username: scr.AuthCfg.Username, Password: scr.AuthCfg.Password}
-	c, err := reddit.NewClient(credentials)
-	if err != nil {
-		log.Printf("err creating client %s, using default client", err)
-		c = reddit.DefaultClient()
-	}
-	scr.reddit = c
+	scr.SourceStore = sources.NewRedditClient(sources.RedditClientOpts{
+		Ctx:            scr.ctx,
+		CfgPath:        sCfg.authCfg,
+		SkipCollection: sCfg.skipCollection,
+		Duration:       sCfg.duration,
+	})
 	//creating dir struct
 	scr.DstStore = store.FileStore{Dir: sCfg.dstDir}
 	scr.createStructure()
 	scr.Run()
 	log.Printf("Processed Imgs : %d", imgCounter)
 	log.Printf("Processed vids : %d", vidCounter)
-}
-
-
-func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
-	//do we need to parse in first place?
-	var final_posts []Post
-	if strings.Contains(p.URL, "/gallery/") {
-		log.Print("found gallery ", p.URL)
-		for _, item := range p.GalleryData.Items {
-			link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, GetMIME(p.MediaMetadata[item.MediaID].MIME))
-			log.Printf("created link %s for gal %s %s", link, p.Title, item.MediaID)
-			if IsImgLink(link) {
-				post := Post{
-					Id:        p.ID,
-					Title:     fmt.Sprintf("%s_GAL_%s", p.Title, item.MediaID[:len(item.MediaID)-3]),
-					MediaType: IMG_TYPE,
-					Ext:       GetMIME(p.MediaMetadata[item.MediaID].MIME),
-					SrcLink:   link,
-					SourceAc:  subreddit,
-				}
-				final_posts = append(final_posts, post)
-				if !sCfg.skipCollection {
-					log.Println("not downloading full collection")
-					break
-				}
-			}
-		}
-		return &final_posts, nil
-	}
-
-	if IsImgLink(p.URL) {
-		post := Post{
-			Id:        p.ID,
-			Title:     p.Title,
-			MediaType: IMG_TYPE,
-			Ext:       strings.Split(p.URL, ".")[len(strings.Split(p.URL, "."))-1],
-			SrcLink:   p.URL,
-			SourceAc:  subreddit,
-		}
-		final_posts = append(final_posts, post)
-		return &final_posts, nil
-	}
-	if !sCfg.skipVideo && p.Media.RedditVideo.FallbackURL != "" {
-		post := Post{
-			Id:        p.ID,
-			Title:     p.Title,
-			MediaType: VID_TYPE,
-			SrcLink:   p.Media.RedditVideo.FallbackURL,
-			Ext:       "mp4",
-			SourceAc:  subreddit,
-		}
-		final_posts = append(final_posts, post)
-		return &final_posts, nil
-	}
-	return nil, fmt.Errorf("can not parse %s this postURL %s", p.ID, p.URL)
-
-}
-
-func (s scrapper) EmitPosts(subreddit string) ([]Post, error) {
-	var final_posts []Post
-	nextToken := ""
-	for {
-		posts, resp, err := s.reddit.Subreddit.TopPosts(s.ctx, subreddit, &reddit.ListPostOptions{
-			ListOptions: reddit.ListOptions{
-				Limit: 100,
-				After: nextToken,
-			},
-			Time: sCfg.duration,
-		})
-		if err != nil {
-			if strings.Contains(err.Error(), "429") {
-				log.Printf("HIT rate limit wait 2 sec")
-				time.Sleep(2 * time.Second)
-				continue
-			} else {
-				log.Printf("error while getting post from %s, %s", subreddit, err)
-				return final_posts, err
-			}
-		}
-		// adding post
-		for _, p := range posts {
-			post, err := parsePost(subreddit, p)
-			if err != nil {
-				log.Printf("post %s: %s", p.Title, err)
-				continue
-			}
-			final_posts = append(final_posts, *post...)
-		}
-
-		nextToken = resp.After
-		if nextToken == "" {
-			break
-		}
-	}
-	return final_posts, nil
 }
 
 func (s scrapper) downloadJob(j Job) error {
@@ -271,13 +170,7 @@ func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	defer wg.Done()
 	fmt.Printf("started sub worker %d\n", id)
 	for r := range m.subq {
-		posts, err := s.EmitPosts(r)
-		if err != nil {
-			log.Printf("%s", err)
-		}
-		for _, p := range posts {
-			m.postq <- p
-		}
+		s.SourceStore.Scrape(r, m.postq)
 	}
 	fmt.Println("sub worker exits ", id)
 }
@@ -325,32 +218,7 @@ func (s scrapper) startWorkers(m *Mediums) {
 	close(m.postq)
 }
 
-func (s scrapper) getPostById(id string) {
-	post, resp, err := s.reddit.Post.Get(s.ctx, id)
-	if err != nil {
-		fmt.Printf("Error getting post: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Print the parsed post data directly
-	fmt.Printf("Post details: %+v\n", post)
-
-	// If you still need to read the raw body, do so before closing the body.
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Error reading response body: %v\n", err)
-		return
-	}
-	fmt.Printf("Raw JSON response: %s\n", data)
-}
-
 func (s scrapper) Run() {
-	if s.sCfg.postId != "" {
-		log.Printf("only fetching data for %s", sCfg.postId)
-		s.getPostById(sCfg.postId)
-		return
-	}
 	var mwg sync.WaitGroup
 	m := &Mediums{
 		subq:  make(chan string),
@@ -364,9 +232,9 @@ func (s scrapper) Run() {
 		defer func() {
 			close(m.subq)
 		}()
-		for _, s := range s.SourceAc {
-			fmt.Println("scrapping ", s)
-			m.subq <- s
+		for _, sub := range s.SourceAc {
+			fmt.Println("scrapping ", sub)
+			m.subq <- sub
 		}
 	}(&mwg)
 LOOP:
@@ -379,10 +247,12 @@ LOOP:
 				break LOOP
 			}
 			if v.MediaType == VID_TYPE {
-				m.vidq <- Job{
-					Src:  v.SrcLink,
-					Dst:  s.dstPath.GetVidPath(v.SourceAc),
-					Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+				if !sCfg.skipVideo {
+					m.vidq <- Job{
+						Src:  v.SrcLink,
+						Dst:  s.dstPath.GetVidPath(v.SourceAc),
+						Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+					}
 				}
 			}
 
@@ -393,8 +263,6 @@ LOOP:
 					Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
 				}
 			}
-		case <-m.post_done:
-			break LOOP
 		}
 	}
 	m.swg.Wait()
