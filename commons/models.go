@@ -2,18 +2,15 @@ package commons
 
 import "path/filepath"
 
-
-
 var (
 	IMG_SUFFIX = []string{".jpg", ".jpeg", ".png", ".gif"}
 	VID_SUFFIX = []string{".mp4"}
 )
 
 const (
-	IMGS = "imgs"
-	VIDS = "vids"
+	IMG_TYPE = "imgs"
+	VID_TYPE = "vids"
 )
-
 
 type Job struct {
 	Src  string

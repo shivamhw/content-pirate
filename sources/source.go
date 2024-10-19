@@ -5,5 +5,5 @@ import (
 )
 
 type Source interface {
-	Emit([]string) <-chan commons.Post
+	Scrape(string, chan<- commons.Post) 
 }

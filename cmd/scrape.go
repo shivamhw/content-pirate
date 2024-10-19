@@ -36,18 +36,20 @@ type AuthCfg struct {
 }
 
 type scrapeCfg struct {
-	dstDir       string
-	authCfg      string
-	subreddits   string
-	postId       string
-	duration     string
-	skipVideo    bool
-	cleanOnStart bool
-	combineDir   bool
-	collection   bool
-	imgWorker    int
-	vidWorker    int
-	redWorker    int
+	dstDir         string
+	vidDir         string
+	imgDir         string
+	authCfg        string
+	subreddits     string
+	postId         string
+	duration       string
+	skipVideo      bool
+	cleanOnStart   bool
+	combineDir     bool
+	skipCollection bool
+	imgWorker      int
+	vidWorker      int
+	redWorker      int
 }
 
 type Mediums struct {
@@ -74,17 +76,20 @@ func scrapeCmd() *cobra.Command {
 		Run:   scrapperHandler,
 	}
 	cmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
+	cmd.Flags().StringVar(&sCfg.imgDir, "img-dir", "imgs", "dst folder for imgs")
+	cmd.Flags().StringVar(&sCfg.vidDir, "vid-dir", "vids", "dst folder for vids")
 	cmd.Flags().StringVar(&sCfg.subreddits, "subs", "./subreddits.json", "list of subreddits")
 	cmd.Flags().StringVar(&sCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
 	cmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
 	cmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
 	cmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
 	cmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
-	cmd.Flags().BoolVar(&sCfg.collection, "collection", false, "download full collection")
+	cmd.Flags().BoolVar(&sCfg.skipCollection, "skip-collection", false, "download full collection")
 	cmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
 	cmd.Flags().IntVar(&sCfg.imgWorker, "img-worker", 10, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.vidWorker, "vid-worker", 5, "nof vid proccesing worker")
-	cmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 10, "nof reddit proccesing worker")
+	cmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 15, "nof reddit proccesing worker")
+
 	return cmd
 }
 
@@ -111,12 +116,12 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 		ctx:  context.Background(),
 		dstPath: &DstPath{
 			BasePath:   sCfg.dstDir,
-			ImgPath:    IMGS,
-			VidPath:    VIDS,
+			ImgPath:    sCfg.imgDir,
+			VidPath:    sCfg.vidDir,
 			CombineDir: sCfg.combineDir,
 		},
 	}
-	// load auth1
+	// load auth
 	GetCfgFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
 	GetCfgFromJson(sCfg.subreddits, &scr.SourceAc)
@@ -136,14 +141,6 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 	log.Printf("Processed vids : %d", vidCounter)
 }
 
-func isImgLink(link string) bool {
-	for _, suff := range IMG_SUFFIX {
-		if strings.HasSuffix(link, suff) {
-			return true
-		}
-	}
-	return false
-}
 
 func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 	//do we need to parse in first place?
@@ -153,17 +150,17 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 		for _, item := range p.GalleryData.Items {
 			link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, GetMIME(p.MediaMetadata[item.MediaID].MIME))
 			log.Printf("created link %s for gal %s %s", link, p.Title, item.MediaID)
-			if isImgLink(link) {
+			if IsImgLink(link) {
 				post := Post{
 					Id:        p.ID,
 					Title:     fmt.Sprintf("%s_GAL_%s", p.Title, item.MediaID[:len(item.MediaID)-3]),
-					MediaType: IMGS,
+					MediaType: IMG_TYPE,
 					Ext:       GetMIME(p.MediaMetadata[item.MediaID].MIME),
 					SrcLink:   link,
 					SourceAc:  subreddit,
 				}
 				final_posts = append(final_posts, post)
-				if !sCfg.collection {
+				if !sCfg.skipCollection {
 					log.Println("not downloading full collection")
 					break
 				}
@@ -172,11 +169,11 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 		return &final_posts, nil
 	}
 
-	if isImgLink(p.URL) {
+	if IsImgLink(p.URL) {
 		post := Post{
 			Id:        p.ID,
 			Title:     p.Title,
-			MediaType: IMGS,
+			MediaType: IMG_TYPE,
 			Ext:       strings.Split(p.URL, ".")[len(strings.Split(p.URL, "."))-1],
 			SrcLink:   p.URL,
 			SourceAc:  subreddit,
@@ -188,7 +185,7 @@ func parsePost(subreddit string, p *reddit.Post) (*[]Post, error) {
 		post := Post{
 			Id:        p.ID,
 			Title:     p.Title,
-			MediaType: VIDS,
+			MediaType: VID_TYPE,
 			SrcLink:   p.Media.RedditVideo.FallbackURL,
 			Ext:       "mp4",
 			SourceAc:  subreddit,
@@ -217,7 +214,8 @@ func (s scrapper) EmitPosts(subreddit string) ([]Post, error) {
 				time.Sleep(2 * time.Second)
 				continue
 			} else {
-				return nil, err
+				log.Printf("error while getting post from %s, %s", subreddit, err)
+				return final_posts, err
 			}
 		}
 		// adding post
@@ -275,7 +273,7 @@ func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	for r := range m.subq {
 		posts, err := s.EmitPosts(r)
 		if err != nil {
-			log.Fatalf("%s", err)
+			log.Printf("%s", err)
 		}
 		for _, p := range posts {
 			m.postq <- p
@@ -380,7 +378,7 @@ LOOP:
 				close(m.vidq)
 				break LOOP
 			}
-			if v.MediaType == VIDS {
+			if v.MediaType == VID_TYPE {
 				m.vidq <- Job{
 					Src:  v.SrcLink,
 					Dst:  s.dstPath.GetVidPath(v.SourceAc),
@@ -388,7 +386,7 @@ LOOP:
 				}
 			}
 
-			if v.MediaType == IMGS {
+			if v.MediaType == IMG_TYPE {
 				m.imgq <- Job{
 					Src:  v.SrcLink,
 					Dst:  s.dstPath.GetImgPath(v.SourceAc),

@@ -2,9 +2,9 @@ package sources
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	. "github.com/shivamhw/reddit-pirate/commons"
@@ -12,12 +12,10 @@ import (
 )
 
 type RedditClient struct {
-	client   *reddit.Client
-	Cfg      *authCfg
-	ctx      context.Context
-	duration string
-	workerQ  chan reddit.Post
-	threads  int
+	client *reddit.Client
+	aCfg   *authCfg
+	ctx    context.Context
+	opts   *RedditClientOpts
 }
 
 type authCfg struct {
@@ -28,30 +26,29 @@ type authCfg struct {
 }
 
 type RedditClientOpts struct {
-	CfgPath  string
-	ctx      context.Context
-	duration string
-	threads  int
+	CfgPath       string
+	ctx           context.Context
+	duration      string
+	skipCollection bool
 }
 
 func NewRedditClient(opts RedditClientOpts) *RedditClient {
 	redditClient := &RedditClient{
-		Cfg:      &authCfg{},
-		ctx:      opts.ctx,
-		duration: opts.duration,
-		threads:  opts.threads,
+		aCfg: &authCfg{},
+		ctx:  opts.ctx,
+		opts: &opts,
 	}
 	if opts.CfgPath == "" {
 		log.Printf("no reddit config passed using default client")
 		return redditClient
 	}
-	GetCfgFromJson(opts.CfgPath, redditClient.Cfg)
+	GetCfgFromJson(opts.CfgPath, redditClient.aCfg)
 	// create auth
 	credentials := reddit.Credentials{
-		ID:       redditClient.Cfg.ID,
-		Secret:   redditClient.Cfg.Secret,
-		Username: redditClient.Cfg.Username,
-		Password: redditClient.Cfg.Password,
+		ID:       redditClient.aCfg.ID,
+		Secret:   redditClient.aCfg.Secret,
+		Username: redditClient.aCfg.Username,
+		Password: redditClient.aCfg.Password,
 	}
 	c, err := reddit.NewClient(credentials)
 	if err != nil {
@@ -62,30 +59,70 @@ func NewRedditClient(opts RedditClientOpts) *RedditClient {
 	return redditClient
 }
 
-func (r *RedditClient) Emit(subreddits []string) <-chan Post {
-	p := make(chan Post)
-	s := make(chan string)
-	var wg sync.WaitGroup
-	// emit to central q
-	for i := 0; i < r.threads; i++ {
-		wg.Add(1)
-		go r.scrapperWorker(s, &wg)
+func (r *RedditClient) Scrape(subreddit string, p chan<- Post) {
+	rposts, err := r.GetTopPosts(subreddit)
+	if err != nil {
+		log.Printf("scrapping subreddit %s failed with %s", subreddit, err)
 	}
-	go func() {
-		for _, sub := range subreddits {
-			log.Printf("adding subreddit %s to q", sub)
-			s <- sub
+	posts := r.convertToPosts(rposts, subreddit)
+	for _, post := range posts {
+		p <- post
+	}
+}
+
+func (r *RedditClient) convertToPosts(rposts []*reddit.Post, subreddit string) (posts []Post) {
+	for _, post := range rposts {
+		// if gallary link
+		if strings.Contains(post.URL, "/gallery/") {
+			log.Print("found gallery ", post.URL)
+			for _, item := range post.GalleryData.Items {
+				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, GetMIME(post.MediaMetadata[item.MediaID].MIME))
+				log.Printf("created link %s for gal %s %s", link, post.Title, item.MediaID)
+				if IsImgLink(link) {
+					post := Post{
+						Id:        post.ID,
+						Title:     fmt.Sprintf("%s_GAL_%s", post.Title, item.MediaID[:len(item.MediaID)-3]),
+						MediaType: IMG_TYPE,
+						Ext:       GetMIME(post.MediaMetadata[item.MediaID].MIME),
+						SrcLink:   link,
+						SourceAc:  subreddit,
+					}
+					posts = append(posts, post)
+					if !r.opts.skipCollection {
+						log.Println("not downloading full collection")
+						break
+					}
+				}
+			}
+			continue
 		}
-		close(s)
-		wg.Wait()
-		close(r.workerQ)
-	}()
-	
-	// read from central q and write to extrenal q
-
-	
-
-	return p
+		// if single img post
+		if IsImgLink(post.URL) {
+			p := Post{
+				Id:        post.ID,
+				Title:     post.Title,
+				SrcLink:   post.URL,
+				SourceAc:  subreddit,
+				Ext:       GetExtFromLink(post.URL),
+				MediaType: IMG_TYPE,
+			}
+			posts = append(posts, p)
+			continue
+		}
+		if post.Media.RedditVideo.FallbackURL != "" {
+			p := Post{
+				Id:        post.ID,
+				Title:     post.Title,
+				MediaType: VID_TYPE,
+				SrcLink:   post.Media.RedditVideo.FallbackURL,
+				Ext:       "mp4",
+				SourceAc:  subreddit,
+			}
+			posts = append(posts, p)
+			continue
+		}
+	}
+	return
 }
 
 func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
@@ -97,7 +134,7 @@ func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
 				Limit: 100,
 				After: nextToken,
 			},
-			Time: r.duration,
+			Time: r.opts.duration,
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {
@@ -115,20 +152,4 @@ func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
 		}
 	}
 	return final_posts, nil
-}
-
-func (r *RedditClient) scrapperWorker(subQ <-chan string, wg *sync.WaitGroup) {
-	//scrape all the post
-	defer wg.Done()
-	for subreddit := range subQ {
-		log.Printf("started proccessing subreddit %s", subreddit)
-		posts, err := r.GetTopPosts(subreddit)
-		// write to q
-		if err != nil {
-			log.Printf("unable to scrape subreddit %s", subreddit)
-		}
-		for _, post := range posts {
-			r.workerQ <- *post
-		}
-	}
 }
