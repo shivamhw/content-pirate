@@ -16,6 +16,7 @@ type Job struct {
 	Src  string
 	Dst  string
 	Name string
+	MediaType string
 }
 
 type Post struct {

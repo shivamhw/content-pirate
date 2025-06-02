@@ -3,21 +3,20 @@ package cmd
 import (
 	"context"
 	"fmt"
+	log "log/slog"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+
 	. "github.com/shivamhw/reddit-pirate/commons"
 	"github.com/shivamhw/reddit-pirate/sources"
 	"github.com/shivamhw/reddit-pirate/store"
 	"github.com/spf13/cobra"
-	"log"
-	"net/http"
-	"path/filepath"
-	"sync"
-	"sync/atomic"
 )
 
 type scrapper struct {
 	SourceStore sources.Source
 	DstStore    store.Store
-	AuthCfg     AuthCfg
 	SourceAc    []string
 	sCfg        *scrapeCfg
 	ctx         context.Context
@@ -49,11 +48,11 @@ type scrapeCfg struct {
 }
 
 type Mediums struct {
-	subq      chan string
-	postq     chan Post
-	imgq      chan Job
-	vidq      chan Job
-	swg       sync.WaitGroup
+	subq  chan string
+	postq chan Post
+	imgq  chan Job
+	vidq  chan Job
+	swg   sync.WaitGroup
 }
 
 var (
@@ -92,14 +91,14 @@ func (s scrapper) createStructure() {
 	if sCfg.cleanOnStart {
 		err := s.DstStore.CleanAll(s.dstPath.GetBasePath())
 		if err != nil {
-			log.Print("err while deleting dir structure ", err)
+			log.Warn("err while deleting dir structure ", "error", err)
 		} else {
-			log.Print("cleanup success")
+			log.Info("cleanup success")
 		}
 	}
 	for _, f := range s.SourceAc {
-		log.Println("creating ", s.dstPath.GetImgPath(f))
-		log.Println("creating ", s.dstPath.GetVidPath(f))
+		log.Info("creating ", "path", s.dstPath.GetImgPath(f))
+		log.Info("creating ", "path", s.dstPath.GetVidPath(f))
 		s.DstStore.CreateDir(s.dstPath.GetImgPath(f))
 		s.DstStore.CreateDir(s.dstPath.GetVidPath(f))
 	}
@@ -116,8 +115,6 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 			CombineDir: sCfg.combineDir,
 		},
 	}
-	// load auth
-	ReadFromJson(sCfg.authCfg, &scr.AuthCfg)
 	// load sub reddit
 	ReadFromJson(sCfg.subreddits, &scr.SourceAc)
 	// create auth
@@ -131,46 +128,51 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 	scr.DstStore = store.FileStore{Dir: sCfg.dstDir}
 	scr.createStructure()
 	scr.Run()
-	log.Printf("Processed Imgs : %d", imgCounter)
-	log.Printf("Processed vids : %d", vidCounter)
-}
-
-func (s scrapper) downloadJob(j Job) error {
-	resp, err := http.Get(j.Src)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download %s because %s code", j.Src, err)
-	}
-	defer resp.Body.Close()
-
-	//save to dir
-	log.Printf("saving %s to filesystem ", j.Name)
-	err = s.DstStore.Write(filepath.Join(j.Dst, j.Name), resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to save file %s to %s as %s", j.Name, j.Dst, err)
-	}
-	return nil
+	log.Info("Summary", "Processed Imgs :", imgCounter)
+	log.Info("Summary", "Processed vids :", vidCounter)
 }
 
 func (s scrapper) processImg(j Job) {
 	//download file
-	if err := s.downloadJob(j); err != nil {
-		log.Printf("failed while downloading imgs %s ", err)
+	data, err := s.SourceStore.DownloadJob(j)
+	if err != nil {
+		log.Warn("failed while downloading imgs", "error", err)
+		return
+	}
+
+	//save to dir
+	log.Info("saving file to filesystem", "filename", j.Name)
+	err = s.DstStore.Write(filepath.Join(j.Dst, j.Name), data)
+	if err != nil {
+		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", j.Name, j.Dst, err))
+		return
 	}
 	atomic.AddInt64(&imgCounter, 1)
 }
 
 func (s scrapper) processVid(j Job) {
-	if err := s.downloadJob(j); err != nil {
-		log.Printf("failed while downloading vid %s ", err)
+	data, err := s.SourceStore.DownloadJob(j)
+	if err != nil {
+		log.Warn("failed while downloading imgs", "error", err)
+		return
+	}
+
+	//save to dir
+	log.Info("saving file to filesystem", "filename", j.Name)
+	err = s.DstStore.Write(filepath.Join(j.Dst, j.Name), data)
+	if err != nil {
+		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", j.Name, j.Dst, err))
+		return
 	}
 	atomic.AddInt64(&vidCounter, 1)
 }
 
 func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	defer wg.Done()
-	fmt.Printf("started sub worker %d\n", id)
+	wg.Add(1)
+	log.Info("started sub worker", "id", id)
 	for r := range m.subq {
-		s.SourceStore.Scrape(r, m.postq)
+		s.SourceStore.ScrapePosts(r, m.postq)
 	}
 	fmt.Println("sub worker exits ", id)
 }
@@ -199,17 +201,16 @@ func (s scrapper) vidWorker(id int, m *Mediums) {
 func (s scrapper) startWorkers(m *Mediums) {
 	var sub_wg sync.WaitGroup
 
-	for i := 0; i < sCfg.redWorker; i++ {
-		sub_wg.Add(1)
+	for i := range sCfg.redWorker {
 		go s.subWorker(i, m, &sub_wg)
 	}
 
-	for i := 0; i < sCfg.imgWorker; i++ {
+	for i := range sCfg.imgWorker {
 		m.swg.Add(1)
 		go s.imgWorker(i, m)
 	}
 
-	for i := 0; i < sCfg.vidWorker; i++ {
+	for i := range sCfg.vidWorker {
 		m.swg.Add(1)
 		go s.vidWorker(i, m)
 	}
@@ -249,18 +250,20 @@ LOOP:
 			if v.MediaType == VID_TYPE {
 				if !sCfg.skipVideo {
 					m.vidq <- Job{
-						Src:  v.SrcLink,
-						Dst:  s.dstPath.GetVidPath(v.SourceAc),
-						Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+						Src:       v.SrcLink,
+						Dst:       s.dstPath.GetVidPath(v.SourceAc),
+						Name:      fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+						MediaType: v.MediaType,
 					}
 				}
 			}
 
 			if v.MediaType == IMG_TYPE {
 				m.imgq <- Job{
-					Src:  v.SrcLink,
-					Dst:  s.dstPath.GetImgPath(v.SourceAc),
-					Name: fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+					Src:       v.SrcLink,
+					Dst:       s.dstPath.GetImgPath(v.SourceAc),
+					Name:      fmt.Sprintf("%s_%s.%s", v.Id, v.Title, v.Ext),
+					MediaType: v.MediaType,
 				}
 			}
 		}

@@ -19,13 +19,21 @@ func GetMIME(media string) string {
 func GetExtFromLink(link string) string {
 	return strings.Split(link, ".")[len(strings.Split(link, "."))-1]
 }
-func ReadFromJson(filePath string, v interface{}) {
+func ReadFromJson(filePath string, v interface{}) error {
+	if _, err := os.Stat(filePath); err != nil {
+		return err
+	}
 	file, _ := os.Open(filePath)
 	defer file.Close()
-	data, _ := io.ReadAll(file)
-	if err := json.Unmarshal(data, v); err != nil {
-		log.Fatal("json unmarshell failed during cfg read")
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatalf("%s", err)
+		return err
 	}
+	if err = json.Unmarshal(data, v); err != nil {
+		log.Fatalf("json unmarshell failed during %s read %s",filePath, err.Error())
+	}
+	return err
 }
 
 func IsImgLink(link string) bool {

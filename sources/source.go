@@ -5,5 +5,6 @@ import (
 )
 
 type Source interface {
-	Scrape(string, chan<- commons.Post) 
+	ScrapePosts(string, chan<- commons.Post)
+	DownloadJob(commons.Job) ([]byte, error)
 }

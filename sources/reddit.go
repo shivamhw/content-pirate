@@ -3,7 +3,10 @@ package sources
 import (
 	"context"
 	"fmt"
-	"log"
+	"io"
+	log "log/slog"
+	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -36,13 +39,18 @@ func NewRedditClient(opts RedditClientOpts) *RedditClient {
 	redditClient := &RedditClient{
 		aCfg: &authCfg{},
 		ctx:  opts.Ctx,
+		client: reddit.DefaultClient(),
 		opts: &opts,
 	}
+	err := ReadFromJson(opts.CfgPath, redditClient.aCfg)
+	if os.IsNotExist(err) {
+		log.Warn("file does not exists")
+		opts.CfgPath = ""
+	}
 	if opts.CfgPath == "" {
-		log.Printf("no reddit config passed using default client")
+		log.Warn("no reddit config passed using default client")
 		return redditClient
 	}
-	ReadFromJson(opts.CfgPath, redditClient.aCfg)
 	// create auth
 	credentials := reddit.Credentials{
 		ID:       redditClient.aCfg.ID,
@@ -52,17 +60,17 @@ func NewRedditClient(opts RedditClientOpts) *RedditClient {
 	}
 	c, err := reddit.NewClient(credentials)
 	if err != nil {
-		log.Printf("err creating client %s, using default client", err)
-		c = reddit.DefaultClient()
+		log.Error("err creating client, using default client","error", err)
+		return redditClient
 	}
 	redditClient.client = c
 	return redditClient
 }
 
-func (r *RedditClient) Scrape(subreddit string, p chan<- Post) {
+func (r *RedditClient) ScrapePosts(subreddit string, p chan<- Post) {
 	rposts, err := r.GetTopPosts(subreddit)
 	if err != nil {
-		log.Printf("scrapping subreddit %s failed with %s", subreddit, err)
+		log.Error("scrapping subreddit failed ","subreddit" ,subreddit,"error", err)
 	}
 	posts := r.convertToPosts(rposts, subreddit)
 	for _, post := range posts {
@@ -74,10 +82,10 @@ func (r *RedditClient) convertToPosts(rposts []*reddit.Post, subreddit string) (
 	for _, post := range rposts {
 		// if gallary link
 		if strings.Contains(post.URL, "/gallery/") {
-			log.Print("found gallery ", post.URL)
+			log.Info("found gallery","url", post.URL)
 			for _, item := range post.GalleryData.Items {
 				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, GetMIME(post.MediaMetadata[item.MediaID].MIME))
-				log.Printf("created link %s for gal %s %s", link, post.Title, item.MediaID)
+				log.Info("created","link", link, "post title", post.Title,"mediaId", item.MediaID)
 				if IsImgLink(link) {
 					post := Post{
 						Id:        post.ID,
@@ -89,7 +97,7 @@ func (r *RedditClient) convertToPosts(rposts []*reddit.Post, subreddit string) (
 					}
 					posts = append(posts, post)
 					if !r.opts.SkipCollection {
-						log.Println("not downloading full collection")
+						log.Info("not downloading full collection")
 						break
 					}
 				}
@@ -138,7 +146,7 @@ func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {
-				log.Printf("HIT rate limit wait 2 sec")
+				log.Warn("HIT rate limit wait 2 sec")
 				time.Sleep(2 * time.Second)
 				continue
 			} else {
@@ -152,4 +160,17 @@ func (r *RedditClient) GetTopPosts(subreddit string) ([]*reddit.Post, error) {
 		}
 	}
 	return final_posts, nil
+}
+
+func (r *RedditClient) DownloadJob(j Job) ([]byte,error) {
+	resp, err := http.Get(j.Src)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download %s because %s code", j.Src, err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error downloading job %s err %s", j.Src, err.Error())
+	}
+	return data, nil
 }

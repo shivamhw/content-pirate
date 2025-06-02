@@ -1,7 +1,6 @@
 package store
 
 import (
-	"io"
 	"log"
 	"os"
 )
@@ -18,13 +17,13 @@ func (f FileStore) DirExists(path string) bool {
 	return info.IsDir()
 }
 
-func (f FileStore) Write(path string, src io.Reader) (err error) {
+func (f FileStore) Write(path string, data []byte) (err error) {
 	outfile, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer outfile.Close()
-	_, err = io.Copy(outfile, src)
+	_, err = outfile.Write(data)
 	return err
 }
 
