@@ -55,9 +55,11 @@ type ListOptions struct {
 	Filter string
 }
 
-func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts ListOptions) ([]*Dialog, error) {
+func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts ListOptions) (error) {
 	log := logctx.From(ctx)
-
+	var results *[]*Dialog
+	results = ctx.Value("results").(*[]*Dialog)
+	_ = results
 	// align output
 	runewidth.EastAsianWidth = false
 	runewidth.DefaultCondition.EastAsianWidth = false
@@ -67,26 +69,26 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 		fg := texpr.NewFieldsGetter(nil)
 		fields, err := fg.Walk(&Dialog{})
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk fields: %w", err)
+			return fmt.Errorf("failed to walk fields: %w", err)
 		}
 
 		fmt.Print(fg.Sprint(fields, true))
-		return nil, nil
+		return nil
 	}
 	// compile filter
 	filter, err := expr.Compile(opts.Filter, expr.AsBool())
 	if err != nil {
-		return nil, fmt.Errorf("failed to compile filter: %w", err)
+		return fmt.Errorf("failed to compile filter: %w", err)
 	}
 
 	dialogs, err := query.GetDialogs(c.API()).BatchSize(100).Collect(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	blocked, err := tutil.GetBlockedDialogs(ctx, c.API())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	manager := peers.Options{Storage: storage.NewPeers(kvd)}.Build(c.API())
@@ -122,7 +124,7 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 		// filter
 		b, err := texpr.Run(filter, r)
 		if err != nil {
-			return nil, fmt.Errorf("failed to run filter: %w", err)
+			return fmt.Errorf("failed to run filter: %w", err)
 		}
 		if !b.(bool) {
 			continue
@@ -137,15 +139,17 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 	case ListOutputJson:
 		bytes, err := json.MarshalIndent(result, "", "\t")
 		if err != nil {
-			return nil, fmt.Errorf("marshal json: %w", err)
+			return fmt.Errorf("marshal json: %w", err)
 		}
 
 		fmt.Println(string(bytes))
 	default:
-		return nil, fmt.Errorf("unknown output: %s", opts.Output)
+		return fmt.Errorf("unknown output: %s", opts.Output)
 	}
 
-	return result, nil
+	*results = result
+
+	return nil
 }
 
 func printTable(result []*Dialog) {

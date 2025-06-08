@@ -1,0 +1,8 @@
+.idea
+log
+.tdl
+.vscode
+downloads
+*.exe
+tdl
+.hugo_build.lock

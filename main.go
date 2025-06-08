@@ -11,5 +11,11 @@ func main() {
 	// tdl.Code(context.Background())
 	ctx := context.Background()
 	t := telegram.NewTelegram(ctx)
-	t.ListChats(&telegram.UserData{PhoneNumber: "+918085026377"})
+	user :=  &telegram.UserData{PhoneNumber: "+918085026377"}
+	// t.ListChats(&telegram.UserData{PhoneNumber: "+918085026377"})
+	// t.ExportChat(&telegram.UserData{PhoneNumber: "+918085026377",}, telegram.ExportOpts{
+	// 	ChatId: "1237061921",
+	// 	Limit: 100,
+	// })
+	t.DownloadExport(user, telegram.DownloadOpts{})
 }
