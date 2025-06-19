@@ -2,43 +2,41 @@ package telegram
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"sync"
 
 	flow "github.com/gotd/td/telegram/auth"
 )
-
-func writePhoneNumToFile(phoneNumber string, basePath string) error {
-	filePath := filepath.Join(basePath, "phone")
-	return os.WriteFile(filePath, []byte(phoneNumber), 0644)
-}
 
 func (t *Telegram) LoginWithCode(ctx context.Context, user *UserData) error {
 	store, err:= t.GetStorage(user)
 	if err != nil {	
 		return err
 	}
-	c, err := t.GetClientWithStore(user, store, false)
+	c, err := t.GetClientWithStore(user, store, true)
 	if err != nil {
 		return err
 	}
-	writePhoneNumToFile(user.PhoneNumber, t.users[user.PhoneNumber].Session.BasePath)
-
-	return c.Run(ctx, func(ctx context.Context) error {
+	auth := NewAsyncAuth()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		c.Run(ctx, func(ctx context.Context) error {
 		if err = c.Ping(ctx); err != nil {
 			return err
 		}
 
-		flow := flow.NewFlow(File(store.BasePath), flow.SendCodeOptions{})
+		flow := flow.NewFlow(auth, flow.SendCodeOptions{})
 		if err = c.Auth().IfNecessary(ctx, flow); err != nil {
 			return err
 		}
-
 		_, err := c.Self(ctx)
 		if err != nil {
 			return err
 		}
 
 		return nil
-	})
+	})}(&wg)
+	wg.Wait()
+	return nil
 }

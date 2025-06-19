@@ -1,0 +1,119 @@
+package reddit
+
+import (
+	"context"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/shivamhw/reddit-pirate/commons"
+	. "github.com/shivamhw/reddit-pirate/pkg/log"
+	"github.com/vartanbeno/go-reddit/v2/reddit"
+)
+
+type Post = reddit.Post
+
+type RedditClient struct {
+	Client *reddit.Client
+	aCfg   *authCfg
+	ctx    context.Context
+	opts   *RedditClientOpts
+}
+
+type authCfg struct {
+	ID       string `json:"id"`
+	Secret   string `json:"secret"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type RedditClientOpts struct {
+	CfgPath        string
+	Duration       string
+	SkipCollection bool
+}
+
+func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient, error) {
+	redditClient := &RedditClient{
+		aCfg: &authCfg{},
+		ctx:  ctx,
+		Client: reddit.DefaultClient(),
+		opts: &opts,
+	}
+	err := commons.ReadFromJson(opts.CfgPath, redditClient.aCfg)
+	if os.IsNotExist(err) {
+		Logger.Warn("file does not exists", "file", opts.CfgPath)
+		opts.CfgPath = ""
+	}
+	if opts.CfgPath == "" {
+		Logger.Warn("no reddit config passed using default client")
+		return redditClient, nil
+	}
+	// create auth
+	credentials := reddit.Credentials{
+		ID:       redditClient.aCfg.ID,
+		Secret:   redditClient.aCfg.Secret,
+		Username: redditClient.aCfg.Username,
+		Password: redditClient.aCfg.Password,
+	}
+	c, err := reddit.NewClient(credentials)
+	if err != nil {
+		Logger.Error("err creating client, using default client","error", err)
+		return redditClient, err
+	}
+	redditClient.Client = c
+	return redditClient, nil
+}
+
+
+func (r *RedditClient) GetTopPosts(subreddit string, limit int) ([]*reddit.Post, error) {
+	var final_posts []*reddit.Post
+	nextToken := ""
+	for {
+		posts, resp, err := r.Client.Subreddit.TopPosts(r.ctx, subreddit, &reddit.ListPostOptions{
+			ListOptions: reddit.ListOptions{
+				Limit: limit,
+				After: nextToken,
+			},
+			Time: r.opts.Duration,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "429") {
+				Logger.Warn("HIT rate limit wait 2 sec")
+				time.Sleep(2 * time.Second)
+				continue
+			} else {
+				return nil, err
+			}
+		}
+		final_posts = append(final_posts, posts...)
+		nextToken = resp.After
+		if nextToken == "" {
+			break
+		}
+	}
+	return final_posts, nil
+}
+
+func (r *RedditClient) GetSubscribedSubreddits(limit int) ([]*reddit.Subreddit, error) {
+	nextToken := ""
+	var err error
+	var results []*reddit.Subreddit
+	for {
+		subs, resp, err := r.Client.Subreddit.Subscribed(r.ctx, &reddit.ListSubredditOptions{
+			ListOptions: reddit.ListOptions{
+				Limit: limit,
+				After: nextToken,
+			},
+		})
+		if err != nil {
+			Logger.Error("failed getting subcribed subreddit list","err", err)
+		}
+		nextToken = resp.After
+		results = append(results, subs...)
+		if nextToken == "" {
+			break
+		}
+	}
+	return results, err
+}

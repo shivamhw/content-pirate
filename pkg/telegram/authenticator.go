@@ -2,75 +2,80 @@ package telegram
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
+	"log/slog"
+	"time"
+
 	flow "github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
-	"time"
 )
-
-var codeChan = make(chan struct{
-	code string
+type asyncAuth struct {
 	phone string
-})
-
-type fileAuth struct {
-	basePath string
-	flow.CodeAuthenticator
+	code string
+	password string
 }
 
-func File(basePath string) flow.UserAuthenticator {
-	return fileAuth{
-		basePath:          basePath,
-		CodeAuthenticator: getFileCode(basePath),
-	}
+func NewAsyncAuth() flow.UserAuthenticator {
+	return &asyncAuth{}
 }
 
-func (f fileAuth) Phone(ctx context.Context) (string, error) {
-	phone, err := os.ReadFile(filepath.Join(f.basePath, "phone"))
-	if err != nil {
-		return "", fmt.Errorf(err.Error())
-	}
-	return string(phone), nil
-}
-
-func (f fileAuth) Password(ctx context.Context) (string, error) {
-	password, err := os.ReadFile(filepath.Join(f.basePath, "password"))
-	if err != nil {
-		return "", fmt.Errorf(err.Error())
-	}
-	return string(password), nil
-}
-
-func getFileCode(basePath string) flow.CodeAuthenticator {
-	return flow.CodeAuthenticatorFunc(func(ctx context.Context, sentCode *tg.AuthSentCode) (string, error) {
-		for {
-			_, err := os.Stat(filepath.Join(basePath, "code"))
-			if err != nil {
-				time.Sleep(1 * time.Second)
-				fmt.Println("Waiting for code file to be created...")
-				continue
-			} else {
-				break
-			}
+func (f *asyncAuth) Code(ctx context.Context, sentCode *tg.AuthSentCode) (string, error){
+	for {
+		if f.code != "" {
+			break
+		} else {
+			slog.Info("waiting for code")
 		}
-		code, err := os.ReadFile(filepath.Join(basePath, "code"))
-		if err != nil {
-			return "", fmt.Errorf(err.Error())
-		}
-		return string(code), nil
-	})
+		time.Sleep(3*time.Second)
+	}
+	return string(f.code), nil
 }
 
-func (f fileAuth) AcceptTermsOfService(ctx context.Context, tos tg.HelpTermsOfService) error {
+func (f *asyncAuth) Phone(ctx context.Context) (string, error) {
+	for {
+		if f.phone != "" {
+			slog.Info("auth", "phone number found ", f.phone)
+			break
+		} else {
+			slog.Info("waiting for phone num")
+		}
+		time.Sleep(3*time.Second)
+	}
+	return string(f.phone), nil
+}
+
+func (f *asyncAuth) Password(ctx context.Context) (string, error) {
+	for {
+		if f.password != "" {
+			break
+		} else {
+			slog.Info("waiting for password")
+		}
+		time.Sleep(10*time.Second)
+	}
+	return string(f.password), nil
+}
+
+
+func (f *asyncAuth) AcceptTermsOfService(ctx context.Context, tos tg.HelpTermsOfService) error {
 	return nil
 }
 
 
-func (f fileAuth) SignUp(ctx context.Context) (flow.UserInfo, error) {
+func (f *asyncAuth) SignUp(ctx context.Context) (flow.UserInfo, error) {
 	return flow.UserInfo{
 		FirstName: "Test",
 		LastName:  "User",
 	}, nil
+}
+
+func (f *asyncAuth) SetPhone(phone string) {
+	f.phone = phone
+}
+
+func (f *asyncAuth) SetCode(code string) {
+	f.code = code
+}
+
+func (f *asyncAuth) SetPass(pass string) {
+	f.password = pass
 }

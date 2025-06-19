@@ -2,7 +2,6 @@ package downloader
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-faster/errors"
 	"github.com/gotd/td/telegram/downloader"
@@ -36,27 +35,21 @@ func New(opts Options) *Downloader {
 
 func (d *Downloader) Download(ctx context.Context, limit int) error {
 	wg, wgctx := errgroup.WithContext(ctx)
-	wg.SetLimit(2)
+	wg.SetLimit(limit)
 
 	for d.opts.Iter.Next(wgctx) {
 		elem := d.opts.Iter.Value()
-		fmt.Print("wg najar")
 		wg.Go(func() (rerr error) {
-			fmt.Print("before add astart")
 			d.opts.Progress.OnAdd(elem)
 			defer func() { d.opts.Progress.OnDone(elem, rerr)}()
-			fmt.Print("yhaaa")
 			if err := d.download(wgctx, elem); err != nil {
 				// canceled by user, so we directly return error to stop all
 				if errors.Is(err, context.Canceled) {
 					return errors.Wrap(err, "download")
 				}
-
-				// don't return error, just log it
 			}
 			return nil
 		})
-			// d.opts.Progress.OnDone(elem, nil)
 	}
 
 	if err := d.opts.Iter.Err(); err != nil {

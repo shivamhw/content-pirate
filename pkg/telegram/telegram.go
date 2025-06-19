@@ -79,8 +79,7 @@ func (t *Telegram) GetClientWithStore(opts *UserData, store *Store, login bool) 
 }
 
 func (t *Telegram) ListChats(opts *UserData) error {
-	var result []*chat.Dialog 
-	resltCtx := context.WithValue(t.ctx, "results", &result)
+	var result []*Dialog 
 	store, err:= t.GetStorage(opts)
 	if err != nil {	
 		return err
@@ -89,8 +88,8 @@ func (t *Telegram) ListChats(opts *UserData) error {
 	if err != nil {
 		return err
 	}
-	err = tclientcore.RunWithAuth(resltCtx, c, func(ctx context.Context) error {
-		err = chat.List(logctx.Named(ctx, "ls"), c, store.Kvd, chat.ListOptions{Filter: "true"})
+	err = tclientcore.RunWithAuth(t.ctx, c, func(ctx context.Context) error {
+		result, err = List(logctx.Named(ctx, "ls"), c, store.Kvd, ListOptions{Filter: "true"})
 		return err
 	})
 	if err != nil {

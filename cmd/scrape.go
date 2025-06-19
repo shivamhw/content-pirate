@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	. "github.com/shivamhw/reddit-pirate/commons"
+	"github.com/shivamhw/reddit-pirate/pkg/reddit"
 	"github.com/shivamhw/reddit-pirate/sources"
 	"github.com/shivamhw/reddit-pirate/store"
 	"github.com/spf13/cobra"
@@ -67,7 +68,7 @@ func scrapeCmd() *cobra.Command {
 		Use:   "scrape",
 		Long:  "Scrapes subreddit for videos and imgs",
 		Short: "scrapes subreddit",
-		Run:   scrapperHandler,
+		RunE:   scrapperHandler,
 	}
 	cmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
 	cmd.Flags().StringVar(&sCfg.imgDir, "img-dir", "imgs", "dst folder for imgs")
@@ -104,7 +105,7 @@ func (s scrapper) createStructure() {
 	}
 }
 
-func scrapperHandler(cmd *cobra.Command, args []string) {
+func scrapperHandler(cmd *cobra.Command, args []string) (err error){
 	scr := scrapper{
 		sCfg: &sCfg,
 		ctx:  context.Background(),
@@ -118,18 +119,23 @@ func scrapperHandler(cmd *cobra.Command, args []string) {
 	// load sub reddit
 	ReadFromJson(sCfg.subreddits, &scr.SourceAc)
 	// create auth
-	scr.SourceStore = sources.NewRedditClient(sources.RedditClientOpts{
-		Ctx:            scr.ctx,
+	scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
+		RedditClientOpts: reddit.RedditClientOpts{
 		CfgPath:        sCfg.authCfg,
 		SkipCollection: sCfg.skipCollection,
-		Duration:       sCfg.duration,
+			Duration:       sCfg.duration,
+		},
 	})
+	if err != nil {
+		return err
+	}
 	//creating dir struct
 	scr.DstStore = store.FileStore{Dir: sCfg.dstDir}
 	scr.createStructure()
 	scr.Run()
 	log.Info("Summary", "Processed Imgs :", imgCounter)
 	log.Info("Summary", "Processed vids :", vidCounter)
+	return err
 }
 
 func (s scrapper) processImg(j Job) {
