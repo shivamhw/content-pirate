@@ -32,16 +32,15 @@ type AuthCfg struct {
 }
 
 type ScrapeCfg struct {
-	dstDir         string
-	vidDir         string
-	imgDir         string
-	authCfg        string
-	subreddits     string
+	DstDir         string
+	VidDir         string
+	ImgDir         string
+	AuthCfg        string
+	SourceIdsFile     string
 	postId         string
-	skipVideo      bool
-	cleanOnStart   bool
-	combineDir     bool
-	skipCollection bool
+	SkipVideos      bool
+	CleanOnStart   bool
+	CombineDir     bool
 	imgWorker      int
 	vidWorker      int
 	redWorker      int
@@ -77,19 +76,19 @@ func scrapeCmd() *cobra.Command {
 			return scr.Start()
 		},
 	}
-	cmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
-	cmd.Flags().StringVar(&sCfg.imgDir, "img-dir", "imgs", "dst folder for imgs")
-	cmd.Flags().StringVar(&sCfg.vidDir, "vid-dir", "vids", "dst folder for vids")
-	cmd.Flags().StringVar(&sCfg.subreddits, "subs", "./subreddits.json", "list of subreddits")
-	cmd.Flags().StringVar(&sCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
+	cmd.Flags().StringVar(&sCfg.DstDir, "dir", "./download", "dst folder for downloads")
+	cmd.Flags().StringVar(&sCfg.ImgDir, "img-dir", "imgs", "dst folder for imgs")
+	cmd.Flags().StringVar(&sCfg.VidDir, "vid-dir", "vids", "dst folder for vids")
+	cmd.Flags().StringVar(&sCfg.SourceIdsFile, "subs", "./subreddits.json", "list of subreddits")
+	cmd.Flags().StringVar(&sCfg.AuthCfg, "auth", "./reddit.json", "auth config for reddit")
 	cmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
 	cmd.Flags().StringVar(&scrapeOpts.Duration, "duration", "day", "duration")
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
 	cmd.Flags().StringSliceVar(&sCfg.sourceIds, "source", []string{}, "source channel ids")
-	cmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
-	cmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
-	cmd.Flags().BoolVar(&sCfg.skipCollection, "skip-collection", false, "download full collection")
-	cmd.Flags().BoolVar(&sCfg.cleanOnStart, "cleanOnStart", true, "clean folders")
+	cmd.Flags().BoolVar(&sCfg.SkipVideos, "skip-vid", true, "skip video download")
+	cmd.Flags().BoolVar(&sCfg.CombineDir, "combine", true, "combine folders")
+	cmd.Flags().BoolVar(&scrapeOpts.SkipCollection, "skip-collection", false, "download full collection")
+	cmd.Flags().BoolVar(&sCfg.CleanOnStart, "cleanOnStart", true, "clean folders")
 	cmd.Flags().IntVar(&sCfg.imgWorker, "img-worker", 10, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.vidWorker, "vid-worker", 5, "nof vid proccesing worker")
 	cmd.Flags().IntVar(&sCfg.redWorker, "reddit-worker", 15, "nof reddit proccesing worker")
@@ -98,8 +97,14 @@ func scrapeCmd() *cobra.Command {
 }
 
 func (cfg *ScrapeCfg) sanitize() error {
-	if cfg.dstDir == "" {
-		cfg.dstDir = "./download"
+	if cfg.DstDir == "" {
+		cfg.DstDir = "./download"
+	}
+	if cfg.VidDir == "" {
+		cfg.VidDir = "vids"
+	}
+	if cfg.ImgDir == "" {
+		cfg.ImgDir = "imgs"
 	}
 	if cfg.scrapeOpts == nil {
 		cfg.scrapeOpts = &sources.ScrapeOpts{
@@ -119,34 +124,34 @@ func NewScrapper(cfg *ScrapeCfg) (scr *Scrapper, err error) {
 		sCfg:       &sCfg,
 		ctx:        context.Background(),
 		dstPath: &DstPath{
-			BasePath:   sCfg.dstDir,
-			ImgPath:    sCfg.imgDir,
-			VidPath:    sCfg.vidDir,
-			CombineDir: sCfg.combineDir,
+			BasePath:   sCfg.DstDir,
+			ImgPath:    sCfg.ImgDir,
+			VidPath:    sCfg.VidDir,
+			CombineDir: sCfg.CombineDir,
 		},
 	}
 	if len(sCfg.sourceIds) > 0 {
 		log.Info("using flags to scrape %s", sCfg.sourceIds)
 		scr.SourceAc = sCfg.sourceIds
 	} else {
-		ReadFromJson(sCfg.subreddits, &scr.SourceAc)
+		ReadFromJson(sCfg.SourceIdsFile, &scr.SourceAc)
 	}
 	scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
 		RedditClientOpts: reddit.RedditClientOpts{
-			CfgPath:        sCfg.authCfg,
-			SkipCollection: sCfg.skipCollection,
+			CfgPath:        sCfg.AuthCfg,
+			SkipCollection: scrapeOpts.SkipCollection,
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 	//creating dir struct
-	scr.DstStore = store.FileStore{Dir: sCfg.dstDir}
+	scr.DstStore = store.FileStore{Dir: sCfg.DstDir}
 	return scr, nil
 }
 
 func (s Scrapper) createStructure() {
-	if sCfg.cleanOnStart {
+	if sCfg.CleanOnStart {
 		err := s.DstStore.CleanAll(s.dstPath.GetBasePath())
 		if err != nil {
 			log.Warn("err while deleting dir structure ", "error", err)
@@ -296,7 +301,7 @@ LOOP:
 				break LOOP
 			}
 			if v.MediaType == VID_TYPE {
-				if !sCfg.skipVideo {
+				if !sCfg.SkipVideos {
 					m.vidq <- Job{
 						Id:        v.Id,
 						Src:       v.SrcLink,

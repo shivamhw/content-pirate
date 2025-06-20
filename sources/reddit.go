@@ -81,7 +81,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 						SourceAc:  subreddit,
 					}
 					posts = append(posts, post)
-					if !r.opts.SkipCollection {
+					if r.opts.SkipCollection {
 						Logger.Info("not downloading full collection")
 						break
 					}

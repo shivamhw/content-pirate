@@ -13,6 +13,7 @@ type ScrapeOpts struct {
 	Duration string
 	LastFrom time.Time
 	NextPage string
+	SkipCollection bool
 }
 
 type Source interface {
