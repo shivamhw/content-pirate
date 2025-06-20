@@ -45,7 +45,7 @@ type ScrapeCfg struct {
 	vidWorker      int
 	redWorker      int
 	scrapeOpts  *sources.ScrapeOpts
-	sourceIds      []string
+	SourceIds      []string
 }
 
 type Mediums struct {
@@ -84,7 +84,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
 	cmd.Flags().StringVar(&scrapeOpts.Duration, "duration", "day", "duration")
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
-	cmd.Flags().StringSliceVar(&sCfg.sourceIds, "source", []string{}, "source channel ids")
+	cmd.Flags().StringSliceVar(&sCfg.SourceIds, "source", []string{}, "source channel ids")
 	cmd.Flags().BoolVar(&sCfg.SkipVideos, "skip-vid", true, "skip video download")
 	cmd.Flags().BoolVar(&sCfg.CombineDir, "combine", true, "combine folders")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipCollection, "skip-collection", false, "download full collection")
@@ -130,9 +130,9 @@ func NewScrapper(cfg *ScrapeCfg) (scr *Scrapper, err error) {
 			CombineDir: sCfg.CombineDir,
 		},
 	}
-	if len(sCfg.sourceIds) > 0 {
-		log.Info("using flags to scrape %s", sCfg.sourceIds)
-		scr.SourceAc = sCfg.sourceIds
+	if len(sCfg.SourceIds) > 0 {
+		log.Info("using flags to scrape %s", sCfg.SourceIds)
+		scr.SourceAc = sCfg.SourceIds
 	} else {
 		ReadFromJson(sCfg.SourceIdsFile, &scr.SourceAc)
 	}
