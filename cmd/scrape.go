@@ -112,6 +112,15 @@ func (cfg *ScrapeCfg) sanitize() error {
 			Duration: "day",
 		}
 	}
+	if cfg.imgWorker <=0 {
+		cfg.imgWorker = 5
+	}
+	if cfg.redWorker <=0 {
+		cfg.redWorker = 5
+	}
+	if cfg.vidWorker <=0 {
+		cfg.vidWorker = 5
+	}
 	return nil
 }
 
