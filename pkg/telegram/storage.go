@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 
 	"github.com/iyear/tdl/core/storage"
-	"github.com/iyear/tdl/pkg/kv"
 	"github.com/iyear/tdl/pkg/key"
+	"github.com/iyear/tdl/pkg/kv"
 	"github.com/iyear/tdl/pkg/tclient"
 )
 
-var DataDir = "/home/shivamhw/Code/reddit-pirate/Rdata/"
+var DataDir = "/home/shivamhw/Code/content-pirate/Rdata/"
 var (
-	defaultBoltPath = filepath.Join(DataDir, "data")
+	defaultBoltPath    = filepath.Join(DataDir, "data")
 	DefaultBoltStorage = map[string]string{
 		kv.DriverTypeKey: kv.DriverBolt.String(),
 		"path":           defaultBoltPath,
@@ -23,18 +23,17 @@ var (
 )
 
 type Store struct {
-	Kvd storage.Storage
-	Stg kv.Storage
+	Kvd      storage.Storage
+	Stg      kv.Storage
 	BasePath string
 }
-
 
 func GetOrCreateStore(ctx context.Context, path string) (*Store, error) {
 	return NewStore(ctx, path, false)
 }
 
 func NewStore(ctx context.Context, path string, clean bool) (*Store, error) {
-	userPath := filepath.Join(DataDir, path) 
+	userPath := filepath.Join(DataDir, path)
 	if _, err := os.Stat(userPath); os.IsNotExist(err) {
 		slog.Info("Creating new store", "path", userPath)
 		os.MkdirAll(userPath, 0755)
@@ -51,7 +50,7 @@ func NewStore(ctx context.Context, path string, clean bool) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	kvd, err := stg.Open("default")
 	if err != nil {
 		return nil, err

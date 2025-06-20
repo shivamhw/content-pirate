@@ -3,13 +3,13 @@ package sources
 import (
 	"time"
 
-	"github.com/shivamhw/reddit-pirate/commons"
+	"github.com/shivamhw/content-pirate/commons"
 )
 
 type ScrapeOpts struct {
-	Limit int
-	Page  int
-	Last  string
+	Limit    int
+	Page     int
+	Last     string
 	Duration string
 	LastFrom time.Time
 	NextPage string

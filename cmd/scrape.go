@@ -8,10 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	. "github.com/shivamhw/reddit-pirate/commons"
-	"github.com/shivamhw/reddit-pirate/pkg/reddit"
-	"github.com/shivamhw/reddit-pirate/sources"
-	"github.com/shivamhw/reddit-pirate/store"
+	. "github.com/shivamhw/content-pirate/commons"
+	"github.com/shivamhw/content-pirate/pkg/reddit"
+	"github.com/shivamhw/content-pirate/sources"
+	"github.com/shivamhw/content-pirate/store"
 	"github.com/spf13/cobra"
 )
 
@@ -110,8 +110,8 @@ func (s scrapper) createStructure() {
 
 func scrapperHandler(cmd *cobra.Command, args []string) (err error) {
 	scr := scrapper{
-		sCfg: &sCfg,
-		ctx:  context.Background(),
+		sCfg:       &sCfg,
+		ctx:        context.Background(),
 		scrapeOpts: &scrapeOpts,
 		dstPath: &DstPath{
 			BasePath:   sCfg.dstDir,
@@ -188,7 +188,7 @@ func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	for r := range m.subq {
 		p, err := s.SourceStore.ScrapePosts(r, *s.scrapeOpts)
 		if err != nil {
-			log.Error("Error while scraping","source", r)
+			log.Error("Error while scraping", "source", r)
 			continue
 		}
 		for post := range p {

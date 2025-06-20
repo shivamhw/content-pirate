@@ -1,4 +1,4 @@
-module github.com/shivamhw/reddit-pirate
+module github.com/shivamhw/content-pirate
 
 go 1.23.3
 

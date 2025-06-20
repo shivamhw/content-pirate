@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/shivamhw/reddit-pirate/commons"
-	. "github.com/shivamhw/reddit-pirate/pkg/log"
-	"github.com/shivamhw/reddit-pirate/pkg/reddit"
+	"github.com/shivamhw/content-pirate/commons"
+	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
 const (
@@ -45,8 +45,8 @@ func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan com
 		opts.Limit = DEFAULT_LIMIT
 	}
 	rposts, err := r.client.GetTopPosts(subreddit, reddit.ListOptions{
-		Limit: opts.Limit,
-		Page: opts.Page,
+		Limit:    opts.Limit,
+		Page:     opts.Page,
 		NextPage: opts.NextPage,
 		Duration: opts.Duration,
 	})
@@ -54,7 +54,7 @@ func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan com
 		Logger.Error("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
 	}
 	go func() {
-	    defer close(p)
+		defer close(p)
 		posts := r.convertToPosts(rposts, subreddit)
 		for _, post := range posts {
 			p <- post

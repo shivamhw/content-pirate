@@ -3,10 +3,10 @@ package reddit_cmd
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/shivamhw/reddit-pirate/pkg/reddit"
-)
 
+	"github.com/shivamhw/content-pirate/pkg/reddit"
+	"github.com/spf13/cobra"
+)
 
 type UserCfg struct {
 	authCfg string
@@ -18,7 +18,7 @@ func userCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "user",
 		Short: "A brief description of your application",
-		RunE:   userCmdInit,
+		RunE:  userCmdInit,
 	}
 	cmd.Flags().StringVar(&uCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
 	return cmd

@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shivamhw/reddit-pirate/commons"
-	. "github.com/shivamhw/reddit-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/commons"
+	. "github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
-
 
 type RedditClient struct {
 	Client *reddit.Client
@@ -32,18 +31,18 @@ type RedditClientOpts struct {
 }
 
 type ListOptions struct {
-	Limit int
-	Page int
+	Limit    int
+	Page     int
 	NextPage string
-	Duration string  // accept hour, day
+	Duration string // accept hour, day
 }
 
 func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient, error) {
 	redditClient := &RedditClient{
-		aCfg: &authCfg{},
-		ctx:  ctx,
+		aCfg:   &authCfg{},
+		ctx:    ctx,
 		Client: reddit.DefaultClient(),
-		opts: &opts,
+		opts:   &opts,
 	}
 	err := commons.ReadFromJson(opts.CfgPath, redditClient.aCfg)
 	if os.IsNotExist(err) {
@@ -63,13 +62,12 @@ func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient,
 	}
 	c, err := reddit.NewClient(credentials)
 	if err != nil {
-		Logger.Error("err creating client, using default client","error", err)
+		Logger.Error("err creating client, using default client", "error", err)
 		return redditClient, err
 	}
 	redditClient.Client = c
 	return redditClient, nil
 }
-
 
 func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post, error) {
 	var final_posts []*Post
@@ -78,7 +76,7 @@ func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post,
 	}
 	nextToken := opts.NextPage
 	for {
-	    page := min(opts.Limit, 25)
+		page := min(opts.Limit, 25)
 		opts.Limit -= page
 		posts, resp, err := r.Client.Subreddit.TopPosts(r.ctx, subreddit, &reddit.ListPostOptions{
 			ListOptions: reddit.ListOptions{
@@ -100,7 +98,7 @@ func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post,
 			final_posts = append(final_posts, ConvertFrom(*p))
 		}
 		nextToken = resp.After
-		if nextToken == "" || opts.Limit <= 0{
+		if nextToken == "" || opts.Limit <= 0 {
 			break
 		}
 	}
@@ -119,7 +117,7 @@ func (r *RedditClient) GetSubscribedSubreddits(limit int) ([]*reddit.Subreddit, 
 			},
 		})
 		if err != nil {
-			Logger.Error("failed getting subcribed subreddit list","err", err)
+			Logger.Error("failed getting subcribed subreddit list", "err", err)
 		}
 		nextToken = resp.After
 		results = append(results, subs...)
@@ -130,26 +128,25 @@ func (r *RedditClient) GetSubscribedSubreddits(limit int) ([]*reddit.Subreddit, 
 	return results, err
 }
 
-
-func (r *RedditClient) SearchSubreddits(q string, limit int) ([]*reddit.Subreddit, error){
+func (r *RedditClient) SearchSubreddits(q string, limit int) ([]*reddit.Subreddit, error) {
 	nextToken := ""
 	var err error
 	var results []*reddit.Subreddit
 	for {
 		page := min(limit, 25)
 		limit -= page
-		subs, resp, err := r.Client.Subreddit.Search(r.ctx,q ,&reddit.ListSubredditOptions{
+		subs, resp, err := r.Client.Subreddit.Search(r.ctx, q, &reddit.ListSubredditOptions{
 			ListOptions: reddit.ListOptions{
 				Limit: page,
 				After: nextToken,
 			},
 		})
 		if err != nil {
-			Logger.Error("failed getting search subreddit list","err", err)
+			Logger.Error("failed getting search subreddit list", "err", err)
 		}
 		nextToken = resp.After
 		results = append(results, subs...)
-		if nextToken == "" || limit <=0  {
+		if nextToken == "" || limit <= 0 {
 			break
 		}
 	}

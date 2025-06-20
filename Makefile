@@ -1,10 +1,10 @@
 clean:
-	- rm reddit-pirate
+	- rm content-pirate
 	- rm -rf download
 build: clean
 	CGO_ENABLED=0 go build
 run: build
-	./reddit-pirate scrape
+	./content-pirate scrape
 
 build-arm: clean
 	GOOS=linux GOARCH=arm64 go build

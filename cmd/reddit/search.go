@@ -3,7 +3,8 @@ package reddit_cmd
 import (
 	"context"
 	"fmt"
-	"github.com/shivamhw/reddit-pirate/pkg/reddit"
+
+	"github.com/shivamhw/content-pirate/pkg/reddit"
 	"github.com/spf13/cobra"
 )
 
