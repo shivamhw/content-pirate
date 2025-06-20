@@ -22,6 +22,7 @@ type scrapper struct {
 	sCfg        *scrapeCfg
 	ctx         context.Context
 	dstPath     *DstPath
+	scrapeOpts  *sources.ScrapeOpts
 }
 
 type AuthCfg struct {
@@ -38,7 +39,6 @@ type scrapeCfg struct {
 	authCfg        string
 	subreddits     string
 	postId         string
-	duration       string
 	skipVideo      bool
 	cleanOnStart   bool
 	combineDir     bool
@@ -46,6 +46,7 @@ type scrapeCfg struct {
 	imgWorker      int
 	vidWorker      int
 	redWorker      int
+	sourceIds      []string
 }
 
 type Mediums struct {
@@ -58,9 +59,9 @@ type Mediums struct {
 
 var (
 	sCfg       scrapeCfg
-	aCfg       AuthCfg
 	imgCounter int64
 	vidCounter int64
+	scrapeOpts sources.ScrapeOpts
 )
 
 func scrapeCmd() *cobra.Command {
@@ -68,7 +69,7 @@ func scrapeCmd() *cobra.Command {
 		Use:   "scrape",
 		Long:  "Scrapes subreddit for videos and imgs",
 		Short: "scrapes subreddit",
-		RunE:   scrapperHandler,
+		RunE:  scrapperHandler,
 	}
 	cmd.Flags().StringVar(&sCfg.dstDir, "dir", "./download", "dst folder for downloads")
 	cmd.Flags().StringVar(&sCfg.imgDir, "img-dir", "imgs", "dst folder for imgs")
@@ -76,7 +77,9 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sCfg.subreddits, "subs", "./subreddits.json", "list of subreddits")
 	cmd.Flags().StringVar(&sCfg.authCfg, "auth", "./reddit.json", "auth config for reddit")
 	cmd.Flags().StringVar(&sCfg.postId, "post-id", "", "post id")
-	cmd.Flags().StringVar(&sCfg.duration, "duration", "day", "duration")
+	cmd.Flags().StringVar(&scrapeOpts.Duration, "duration", "day", "duration")
+	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
+	cmd.Flags().StringSliceVar(&sCfg.sourceIds, "source", []string{}, "source channel ids")
 	cmd.Flags().BoolVar(&sCfg.skipVideo, "skip-vid", true, "skip video download")
 	cmd.Flags().BoolVar(&sCfg.combineDir, "combine", true, "combine folders")
 	cmd.Flags().BoolVar(&sCfg.skipCollection, "skip-collection", false, "download full collection")
@@ -105,10 +108,11 @@ func (s scrapper) createStructure() {
 	}
 }
 
-func scrapperHandler(cmd *cobra.Command, args []string) (err error){
+func scrapperHandler(cmd *cobra.Command, args []string) (err error) {
 	scr := scrapper{
 		sCfg: &sCfg,
 		ctx:  context.Background(),
+		scrapeOpts: &scrapeOpts,
 		dstPath: &DstPath{
 			BasePath:   sCfg.dstDir,
 			ImgPath:    sCfg.imgDir,
@@ -117,13 +121,17 @@ func scrapperHandler(cmd *cobra.Command, args []string) (err error){
 		},
 	}
 	// load sub reddit
-	ReadFromJson(sCfg.subreddits, &scr.SourceAc)
+	if len(sCfg.sourceIds) > 0 {
+		log.Info("using flags to scrape %s", sCfg.sourceIds)
+		scr.SourceAc = sCfg.sourceIds
+	} else {
+		ReadFromJson(sCfg.subreddits, &scr.SourceAc)
+	}
 	// create auth
 	scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
 		RedditClientOpts: reddit.RedditClientOpts{
-		CfgPath:        sCfg.authCfg,
-		SkipCollection: sCfg.skipCollection,
-			Duration:       sCfg.duration,
+			CfgPath:        sCfg.authCfg,
+			SkipCollection: sCfg.skipCollection,
 		},
 	})
 	if err != nil {
@@ -178,7 +186,14 @@ func (s scrapper) subWorker(id int, m *Mediums, wg *sync.WaitGroup) {
 	wg.Add(1)
 	log.Info("started sub worker", "id", id)
 	for r := range m.subq {
-		s.SourceStore.ScrapePosts(r, m.postq)
+		p, err := s.SourceStore.ScrapePosts(r, *s.scrapeOpts)
+		if err != nil {
+			log.Error("Error while scraping","source", r)
+			continue
+		}
+		for post := range p {
+			m.postq <- post
+		}
 	}
 	fmt.Println("sub worker exits ", id)
 }

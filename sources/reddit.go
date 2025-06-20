@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	DEFAULT_LIMIT = 100
+	DEFAULT_LIMIT = 10
 )
 
 type RedditStore struct {
 	client *reddit.RedditClient
-	opts  *RedditStoreOpts
+	opts   *RedditStoreOpts
 }
 
 type RedditStoreOpts struct {
@@ -27,8 +27,7 @@ type RedditStoreOpts struct {
 
 func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, error) {
 	c, err := reddit.NewRedditClient(ctx, reddit.RedditClientOpts{
-		CfgPath: opts.CfgPath,
-		Duration: opts.Duration,
+		CfgPath:        opts.CfgPath,
 		SkipCollection: opts.SkipCollection,
 	})
 	if err != nil {
@@ -36,29 +35,42 @@ func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, e
 	}
 	return &RedditStore{
 		client: c,
-		opts: opts,
+		opts:   opts,
 	}, nil
 }
 
-func (r *RedditStore) ScrapePosts(subreddit string, p chan<- commons.Post) {
-	rposts, err := r.client.GetTopPosts(subreddit, DEFAULT_LIMIT)
+func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan commons.Post, err error) {
+	p = make(chan commons.Post, 5)
+	if opts.Limit <= 0 {
+		opts.Limit = DEFAULT_LIMIT
+	}
+	rposts, err := r.client.GetTopPosts(subreddit, reddit.ListOptions{
+		Limit: opts.Limit,
+		Page: opts.Page,
+		NextPage: opts.NextPage,
+		Duration: opts.Duration,
+	})
 	if err != nil {
-		Logger.Error("scrapping subreddit failed ","subreddit" ,subreddit,"error", err)
+		Logger.Error("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
 	}
-	posts := r.convertToPosts(rposts, subreddit)
-	for _, post := range posts {
-		p <- post
-	}
+	go func() {
+	    defer close(p)
+		posts := r.convertToPosts(rposts, subreddit)
+		for _, post := range posts {
+			p <- post
+		}
+	}()
+	return p, nil
 }
 
 func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (posts []commons.Post) {
 	for _, post := range rposts {
 		// if gallary link
 		if strings.Contains(post.URL, "/gallery/") {
-			Logger.Info("found gallery","url", post.URL)
+			Logger.Info("found gallery", "url", post.URL)
 			for _, item := range post.GalleryData.Items {
 				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, commons.GetMIME(post.MediaMetadata[item.MediaID].MIME))
-				Logger.Info("created","link", link, "post title", post.Title,"mediaId", item.MediaID)
+				Logger.Info("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
 				if commons.IsImgLink(link) {
 					post := commons.Post{
 						Id:        post.ID,
@@ -106,7 +118,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 	return
 }
 
-func (r *RedditStore) DownloadJob(j commons.Job) ([]byte,error) {
+func (r *RedditStore) DownloadJob(j commons.Job) ([]byte, error) {
 	resp, err := http.Get(j.Src)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to download %s because %s code", j.Src, err)

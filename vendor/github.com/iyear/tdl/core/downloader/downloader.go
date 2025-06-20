@@ -39,15 +39,20 @@ func (d *Downloader) Download(ctx context.Context, limit int) error {
 
 	for d.opts.Iter.Next(wgctx) {
 		elem := d.opts.Iter.Value()
+
 		wg.Go(func() (rerr error) {
 			d.opts.Progress.OnAdd(elem)
-			defer func() { d.opts.Progress.OnDone(elem, rerr)}()
+			defer func() { d.opts.Progress.OnDone(elem, rerr) }()
+
 			if err := d.download(wgctx, elem); err != nil {
 				// canceled by user, so we directly return error to stop all
 				if errors.Is(err, context.Canceled) {
 					return errors.Wrap(err, "download")
 				}
+
+				// don't return error, just log it
 			}
+
 			return nil
 		})
 	}

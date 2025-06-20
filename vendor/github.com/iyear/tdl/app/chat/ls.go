@@ -55,11 +55,9 @@ type ListOptions struct {
 	Filter string
 }
 
-func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts ListOptions) (error) {
+func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts ListOptions) error {
 	log := logctx.From(ctx)
-	var results *[]*Dialog
-	results = ctx.Value("results").(*[]*Dialog)
-	_ = results
+
 	// align output
 	runewidth.EastAsianWidth = false
 	runewidth.DefaultCondition.EastAsianWidth = false
@@ -146,8 +144,6 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 	default:
 		return fmt.Errorf("unknown output: %s", opts.Output)
 	}
-
-	*results = result
 
 	return nil
 }

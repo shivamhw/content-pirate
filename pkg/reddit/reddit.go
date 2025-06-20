@@ -11,7 +11,6 @@ import (
 	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
 
-type Post = reddit.Post
 
 type RedditClient struct {
 	Client *reddit.Client
@@ -29,8 +28,14 @@ type authCfg struct {
 
 type RedditClientOpts struct {
 	CfgPath        string
-	Duration       string
 	SkipCollection bool
+}
+
+type ListOptions struct {
+	Limit int
+	Page int
+	NextPage string
+	Duration string  // accept hour, day
 }
 
 func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient, error) {
@@ -66,16 +71,21 @@ func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient,
 }
 
 
-func (r *RedditClient) GetTopPosts(subreddit string, limit int) ([]*reddit.Post, error) {
-	var final_posts []*reddit.Post
-	nextToken := ""
+func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post, error) {
+	var final_posts []*Post
+	if opts.Duration == "" {
+		opts.Duration = "hour"
+	}
+	nextToken := opts.NextPage
 	for {
+	    page := min(opts.Limit, 25)
+		opts.Limit -= page
 		posts, resp, err := r.Client.Subreddit.TopPosts(r.ctx, subreddit, &reddit.ListPostOptions{
 			ListOptions: reddit.ListOptions{
-				Limit: limit,
+				Limit: page,
 				After: nextToken,
 			},
-			Time: r.opts.Duration,
+			Time: opts.Duration,
 		})
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {
@@ -86,9 +96,11 @@ func (r *RedditClient) GetTopPosts(subreddit string, limit int) ([]*reddit.Post,
 				return nil, err
 			}
 		}
-		final_posts = append(final_posts, posts...)
+		for _, p := range posts {
+			final_posts = append(final_posts, ConvertFrom(*p))
+		}
 		nextToken = resp.After
-		if nextToken == "" {
+		if nextToken == "" || opts.Limit <= 0{
 			break
 		}
 	}
@@ -112,6 +124,32 @@ func (r *RedditClient) GetSubscribedSubreddits(limit int) ([]*reddit.Subreddit, 
 		nextToken = resp.After
 		results = append(results, subs...)
 		if nextToken == "" {
+			break
+		}
+	}
+	return results, err
+}
+
+
+func (r *RedditClient) SearchSubreddits(q string, limit int) ([]*reddit.Subreddit, error){
+	nextToken := ""
+	var err error
+	var results []*reddit.Subreddit
+	for {
+		page := min(limit, 25)
+		limit -= page
+		subs, resp, err := r.Client.Subreddit.Search(r.ctx,q ,&reddit.ListSubredditOptions{
+			ListOptions: reddit.ListOptions{
+				Limit: page,
+				After: nextToken,
+			},
+		})
+		if err != nil {
+			Logger.Error("failed getting search subreddit list","err", err)
+		}
+		nextToken = resp.After
+		results = append(results, subs...)
+		if nextToken == "" || limit <=0  {
 			break
 		}
 	}
