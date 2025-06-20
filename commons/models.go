@@ -13,9 +13,11 @@ const (
 )
 
 type Job struct {
+	Id 	 string
 	Src  string
 	Dst  string
 	Name string
+	FileName string
 	MediaType string
 }
 
