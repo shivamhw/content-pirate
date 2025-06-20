@@ -8,5 +8,6 @@ func RedditCmd() *cobra.Command {
 		Short: "reddit specific cmds",
 	}
 	cmd.AddCommand(userCmd())
+	cmd.AddCommand(searchCmd())
 	return &cmd
 }
