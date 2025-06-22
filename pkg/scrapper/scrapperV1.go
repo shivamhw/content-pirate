@@ -103,7 +103,7 @@ func (s *ScrapperV1) processImg(i sources.Item) {
 	}
 
 	//save to dir
-	log.Info("saving file to filesystem", "filename", i.FileName)
+	log.Info("saving file to filesystem", "dst", i.Dst)
 
 	i.Dst, err = i.DstStore.Write(i.Dst, commons.IMG_TYPE, data)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *ScrapperV1) processVid(i sources.Item) {
 	}
 
 	//save to dir
-	log.Info("saving file to filesystem", "filename", i.FileName)
+	log.Info("saving file to filesystem", "dst", i.Dst)
 	i.Dst, err = i.DstStore.Write(i.Dst, commons.VID_TYPE, data)
 	if err != nil {
 		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
@@ -170,9 +170,9 @@ LOOP:
 				defer wg.Done()
 				for post := range p {
 					if len(post.Title) > 50 {
-						post.Title = post.Title[:50]
+						post.Title = post.Title[:40]
 					}
-					dst := fmt.Sprintf("%s.%s", post.Title, post.Ext)
+					dst := fmt.Sprintf("%s_%s.%s", post.Title, post.Id, post.Ext)
 					if !v.J.Dst.CombineDir {
 						dst = fmt.Sprintf("%s/%s", v.J.SrcAc, dst)
 					}
@@ -220,7 +220,7 @@ func (s *ScrapperV1) imgWorker(id int) {
 	defer s.swg.Done()
 	fmt.Println("starting img woker ", id)
 	for j := range s.M.imgq {
-		fmt.Println("processing img ", j.Title)
+		log.Debug("processing img ","title", j.Title)
 		s.processImg(j)
 	}
 	fmt.Println("Exited img worker ", id)
@@ -230,14 +230,14 @@ func (s *ScrapperV1) vidWorker(id int) {
 	defer s.swg.Done()
 	fmt.Println("starting vid woker ", id)
 	for j := range s.M.vidq {
-		fmt.Println("processing VIDEO ", j.Title, j.Src)
+		log.Debug("processing VID ","title", j.Title)
 		s.processVid(j)
 	}
 	fmt.Println("Exited vid worker ", id)
 }
 
 func (s *ScrapperV1) startWorkers() {
-	for _ = range s.sCfg.TopicWorkers {
+	for range s.sCfg.TopicWorkers {
 		go s.subWorker()
 	}
 

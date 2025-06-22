@@ -45,8 +45,12 @@ func scrapeCmd() *cobra.Command {
 			for _, i := range jIds {
 				s.WaitOnId(i)
 			}
-			j1, err := s.GetJob(jIds[0])
-			fmt.Print(j1)
+			for _, i := range jIds {
+				j, _ := s.GetJob(i)
+				for _, f := range j.I {
+					fmt.Printf("%s\t%s\n", f.SourceAc, f.Dst)
+				}
+			}
 			return err
 		},
 	}
