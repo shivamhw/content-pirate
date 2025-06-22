@@ -46,7 +46,7 @@ func (f *FileStore) DirExists(path string) bool {
 	return info.IsDir()
 }
 
-func (f *FileStore) Write(path string, t commons.MediaType, data []byte) (err error) {
+func (f *FileStore) Write(path string, t commons.MediaType, data []byte) (string, error) {
 	switch t {
 	case commons.IMG_TYPE:
 		path = filepath.Join(f.Dst.BasePath, f.Dst.ImgPath, path)
@@ -58,11 +58,11 @@ func (f *FileStore) Write(path string, t commons.MediaType, data []byte) (err er
 	}
 	outfile, err := os.Create(path)
 	if err != nil {
-		return err
+		return path, err
 	}
 	defer outfile.Close()
 	_, err = outfile.Write(data)
-	return err
+	return path,err
 }
 
 func (f *FileStore) CreateDir(path string) {

@@ -28,5 +28,6 @@ type Task struct {
 }
 
 type TaskUpdateOpts struct {
-	TaskStatus
+	*TaskStatus
+	Items []sources.Item
 }

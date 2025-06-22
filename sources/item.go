@@ -19,7 +19,7 @@ type Item struct {
 	Src      string
 	FileName string
 	Type     commons.MediaType
-	DstStore store.Store
+	DstStore store.Store `json:"-"`
 	Dst      string
 	Status   ItemStatus
 	SourceAc string

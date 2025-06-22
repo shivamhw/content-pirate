@@ -105,7 +105,7 @@ func (s *ScrapperV1) processImg(i sources.Item) {
 	//save to dir
 	log.Info("saving file to filesystem", "filename", i.FileName)
 
-	err = i.DstStore.Write(i.Dst, commons.IMG_TYPE, data)
+	i.Dst, err = i.DstStore.Write(i.Dst, commons.IMG_TYPE, data)
 	if err != nil {
 		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
 		return
@@ -124,7 +124,7 @@ func (s *ScrapperV1) increment(id string) {
 	}
 	atomic.AddInt64(&t.Status.ItemDone, 1)
 	_, err = s.UpdateItemDone(id, TaskUpdateOpts{
-		TaskStatus: t.Status,
+		TaskStatus: &t.Status,
 	})
 	if err != nil {
 		log.Error("error incrementing", "taskId", id)
@@ -141,7 +141,7 @@ func (s *ScrapperV1) processVid(i sources.Item) {
 
 	//save to dir
 	log.Info("saving file to filesystem", "filename", i.FileName)
-	err = i.DstStore.Write(i.Dst, commons.VID_TYPE, data)
+	i.Dst, err = i.DstStore.Write(i.Dst, commons.VID_TYPE, data)
 	if err != nil {
 		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
 		return
@@ -168,7 +168,6 @@ LOOP:
 			wg.Add(1)
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
-				var count int64
 				for post := range p {
 					if len(post.Title) > 50 {
 						post.Title = post.Title[:50]
@@ -178,7 +177,7 @@ LOOP:
 						dst = fmt.Sprintf("%s/%s", v.J.SrcAc, dst)
 					}
 
-					s.M.ItemQ <- sources.Item{
+					item := sources.Item{
 						Id:       post.Id,
 						TaskId:   v.Id,
 						Src:      post.SrcLink,
@@ -190,13 +189,15 @@ LOOP:
 						SourceAc: post.SourceAc,
 						DstStore: v.S,
 					}
-					count++
+					v.I = append(v.I, item)
+					s.M.ItemQ <- item
 				}
-				atomic.AddInt64(&v.Status.TotalItem, count)
+				v.Status.TotalItem = int64(len(v.I))
 				log.Info("updating total item", "task", v.Id, "items", v.Status.TotalItem)
 				v.Status.Status = TaskStarted
 				nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
-					TaskStatus: v.Status,
+					TaskStatus: &v.Status,
+					Items: v.I,
 				})
 				v.Status = nTask.Status
 				if err != nil {
@@ -380,8 +381,13 @@ func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
-	t.Status.TotalItem = opts.TaskStatus.TotalItem
-	t.Status.Status = opts.TaskStatus.Status
+	if opts.TaskStatus != nil {
+		t.Status.TotalItem = opts.TaskStatus.TotalItem
+		t.Status.Status = opts.TaskStatus.Status
+	}
+	if opts.Items != nil {
+		t.I = append(t.I, opts.Items...)
+	}
 	// hack alert
 	v, _ := json.Marshal(t)
 	err = s.kv.Set("task", id, v)

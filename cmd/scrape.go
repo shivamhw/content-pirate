@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/shivamhw/content-pirate/pkg/scrapper"
 	"github.com/shivamhw/content-pirate/sources"
 	"github.com/shivamhw/content-pirate/store"
@@ -43,6 +45,8 @@ func scrapeCmd() *cobra.Command {
 			for _, i := range jIds {
 				s.WaitOnId(i)
 			}
+			j1, err := s.GetJob(jIds[0])
+			fmt.Print(j1)
 			return err
 		},
 	}
