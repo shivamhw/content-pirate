@@ -79,7 +79,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 				if commons.IsImgLink(link) {
 					post := Post{
 						Id:        fmt.Sprintf("%d", item.ID),
-						Title:     fmt.Sprintf("%s_GAL_%s", post.Title, item.MediaID[:len(item.MediaID)-3]),
+						Title:     post.Title, //fmt.Sprintf("%s_GAL_%s", post.Title, item.MediaID[:len(item.MediaID)-3]),
 						MediaType: commons.IMG_TYPE,
 						Ext:       commons.GetMIME(post.MediaMetadata[item.MediaID].MIME),
 						SrcLink:   link,

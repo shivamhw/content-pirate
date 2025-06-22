@@ -169,10 +169,8 @@ LOOP:
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
 				for post := range p {
-					if len(post.Title) > 50 {
-						post.Title = post.Title[:40]
-					}
-					dst := fmt.Sprintf("%s_%s.%s", post.Title, post.Id, post.Ext)
+					fileName := fmt.Sprintf("%s.%s", post.Id, post.Ext)
+					dst := fmt.Sprintf("%s.%s", post.Id, post.Ext)
 					if !v.J.Dst.CombineDir {
 						dst = fmt.Sprintf("%s/%s", v.J.SrcAc, dst)
 					}
@@ -182,7 +180,7 @@ LOOP:
 						TaskId:   v.Id,
 						Src:      post.SrcLink,
 						Title:    post.Title,
-						FileName: fmt.Sprintf("%s.%s", post.Title, post.Ext),
+						FileName: fileName, 
 						Dst:      dst,
 						Type:     post.MediaType,
 						Ext:      post.Ext,
