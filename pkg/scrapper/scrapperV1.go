@@ -95,7 +95,7 @@ func (s *ScrapperV1) getStore(d *store.DstPath) (store.Store, error) {
 
 func (s *ScrapperV1) processImg(i sources.Item) {
 	//download file
-	s.increment(i.TaskId)
+	defer s.increment(i.TaskId)
 	data, err := s.SourceStore.DownloadItem(i)
 	if err != nil {
 		log.Warn("failed while downloading imgs", "error", err)
