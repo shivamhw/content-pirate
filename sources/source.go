@@ -3,8 +3,16 @@ package sources
 import (
 	"time"
 
-	"github.com/shivamhw/content-pirate/commons"
 )
+
+type Post struct {
+	MediaType string
+	SrcLink   string
+	Title     string
+	Id        string
+	SourceAc  string
+	Ext       string
+}
 
 type ScrapeOpts struct {
 	Limit    int
@@ -14,9 +22,10 @@ type ScrapeOpts struct {
 	LastFrom time.Time
 	NextPage string
 	SkipCollection bool
+	SkipVideos bool
 }
 
 type Source interface {
-	ScrapePosts(string, ScrapeOpts) (chan commons.Post, error)
-	DownloadJob(commons.Job) ([]byte, error)
+	ScrapePosts(string, ScrapeOpts) (chan Post, error)
+	DownloadItem(Item) ([]byte, error)
 }

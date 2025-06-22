@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/shivamhw/content-pirate/commons"
 	. "github.com/shivamhw/content-pirate/pkg/log"
@@ -28,7 +29,6 @@ type RedditStoreOpts struct {
 func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, error) {
 	c, err := reddit.NewRedditClient(ctx, reddit.RedditClientOpts{
 		CfgPath:        opts.CfgPath,
-		SkipCollection: opts.SkipCollection,
 	})
 	if err != nil {
 		return nil, err
@@ -39,8 +39,9 @@ func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, e
 	}, nil
 }
 
-func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan commons.Post, err error) {
-	p = make(chan commons.Post, 5)
+func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan Post, err error) {
+	p = make(chan Post, 5)
+	var count int64
 	if opts.Limit <= 0 {
 		opts.Limit = DEFAULT_LIMIT
 	}
@@ -53,17 +54,21 @@ func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan com
 	if err != nil {
 		Logger.Error("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
 	}
-	go func() {
-		defer close(p)
-		posts := r.convertToPosts(rposts, subreddit)
+	go func(c *int64) {
+		defer func(){
+		close(p)
+		Logger.Info("scrapping post completed.","scraped posts", *c)
+		}()
+		posts := r.convertToPosts(rposts, subreddit, opts)
 		for _, post := range posts {
 			p <- post
+			atomic.AddInt64(c, 1)
 		}
-	}()
+	}(&count)
 	return p, nil
 }
 
-func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (posts []commons.Post) {
+func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, opts ScrapeOpts) (posts []Post) {
 	for _, post := range rposts {
 		// if gallary link
 		if strings.Contains(post.URL, "/gallery/") {
@@ -72,7 +77,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, commons.GetMIME(post.MediaMetadata[item.MediaID].MIME))
 				Logger.Info("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
 				if commons.IsImgLink(link) {
-					post := commons.Post{
+					post := Post{
 						Id:        post.ID,
 						Title:     fmt.Sprintf("%s_GAL_%s", post.Title, item.MediaID[:len(item.MediaID)-3]),
 						MediaType: commons.IMG_TYPE,
@@ -81,7 +86,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 						SourceAc:  subreddit,
 					}
 					posts = append(posts, post)
-					if r.opts.SkipCollection {
+					if opts.SkipCollection {
 						Logger.Info("not downloading full collection")
 						break
 					}
@@ -91,7 +96,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 		}
 		// if single img post
 		if commons.IsImgLink(post.URL) {
-			p := commons.Post{
+			p := Post{
 				Id:        post.ID,
 				Title:     post.Title,
 				SrcLink:   post.URL,
@@ -102,8 +107,8 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 			posts = append(posts, p)
 			continue
 		}
-		if post.Media.RedditVideo.FallbackURL != "" {
-			p := commons.Post{
+		if !opts.SkipVideos && post.Media.RedditVideo.FallbackURL != "" {
+			p := Post{
 				Id:        post.ID,
 				Title:     post.Title,
 				MediaType: commons.VID_TYPE,
@@ -118,15 +123,15 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string) (p
 	return
 }
 
-func (r *RedditStore) DownloadJob(j commons.Job) ([]byte, error) {
-	resp, err := http.Get(j.Src)
+func (r *RedditStore) DownloadItem(i Item) ([]byte, error) {
+	resp, err := http.Get(i.Src)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to download %s because %s code", j.Src, err)
+		return nil, fmt.Errorf("failed to download %s because %s code", i.Src, err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error downloading job %s err %s", j.Src, err.Error())
+		return nil, fmt.Errorf("error downloading job %s err %s", i.Src, err.Error())
 	}
 	return data, nil
 }

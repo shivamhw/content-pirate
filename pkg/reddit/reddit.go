@@ -27,7 +27,6 @@ type authCfg struct {
 
 type RedditClientOpts struct {
 	CfgPath        string
-	SkipCollection bool
 }
 
 type ListOptions struct {

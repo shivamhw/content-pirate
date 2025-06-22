@@ -1,56 +1,23 @@
 package commons
 
-import "path/filepath"
-
 var (
 	IMG_SUFFIX = []string{".jpg", ".jpeg", ".png", ".gif"}
 	VID_SUFFIX = []string{".mp4"}
 )
 
+type MediaType = string
+
 const (
-	IMG_TYPE = "imgs"
-	VID_TYPE = "vids"
+	VID_TYPE MediaType = "vids"
+	IMG_TYPE MediaType = "imgs"
 )
 
 type Job struct {
-	Id 	 string
-	Src  string
-	Dst  string
-	Name string
-	FileName string
-	MediaType string
-}
-
-type Post struct {
-	MediaType string
-	SrcLink   string
-	Title     string
 	Id        string
-	SourceAc  string
-	Ext       string
-}
-
-type DstPath struct {
-	ImgPath    string
-	VidPath    string
-	BasePath   string
-	CombineDir bool
-}
-
-func (d *DstPath) GetBasePath() string {
-	return d.BasePath
-}
-
-func (d *DstPath) GetImgPath(r string) string {
-	if d.CombineDir {
-		return filepath.Join(d.BasePath, d.ImgPath)
-	}
-	return filepath.Join(d.BasePath, r, d.ImgPath)
-}
-
-func (d *DstPath) GetVidPath(r string) string {
-	if d.CombineDir {
-		return filepath.Join(d.BasePath, d.VidPath)
-	}
-	return filepath.Join(d.BasePath, r, d.VidPath)
+	Src       string
+	Dst       string
+	Title     string
+	FileName  string
+	MediaType string
+	SrcAcId   string
 }
