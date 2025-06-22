@@ -2,4 +2,8 @@
 *.json
 .vscode
 rawSubs
-reddit-pirate
+content-pirate
+send.sh
+testLo/*/
+/Rdata
+content-pirate
