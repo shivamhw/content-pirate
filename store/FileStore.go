@@ -109,3 +109,16 @@ func (f *FileStore) createStructure() {
 	f.CreateDir(filepath.Join(f.Dst.BasePath, f.Dst.ImgPath))
 	f.CreateDir(filepath.Join(f.Dst.BasePath, f.Dst.VidPath))
 }
+
+func (f *FileStore) FileExists(path string, t commons.MediaType) (bool) {
+	switch t {
+	case commons.IMG_TYPE:
+		path = filepath.Join(f.Dst.BasePath, f.Dst.ImgPath, path)
+	case commons.VID_TYPE:
+		path = filepath.Join(f.Dst.BasePath, f.Dst.VidPath, path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	return true
+}

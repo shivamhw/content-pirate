@@ -11,6 +11,15 @@ import (
 	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
 
+type PostFilter string
+
+const (
+	REDDIT_TOP    PostFilter = "REDDIT_TOP"
+	REDDIT_HOT    PostFilter = "REDDIT_HOT"
+	REDDIT_NEW    PostFilter = "REDDIT_NEW"
+	DEFAULT_LIMIT            = 10
+)
+
 type RedditClient struct {
 	Client *reddit.Client
 	aCfg   *authCfg
@@ -26,7 +35,7 @@ type authCfg struct {
 }
 
 type RedditClientOpts struct {
-	CfgPath        string
+	CfgPath string
 }
 
 type ListOptions struct {
@@ -34,6 +43,7 @@ type ListOptions struct {
 	Page     int
 	NextPage string
 	Duration string // accept hour, day
+	Filter   PostFilter
 }
 
 func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient, error) {
@@ -68,22 +78,39 @@ func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient,
 	return redditClient, nil
 }
 
-func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post, error) {
+func (r *RedditClient) GetPosts(subreddit string, opts ListOptions) ([]*Post, error) {
 	var final_posts []*Post
-	if opts.Duration == "" {
-		opts.Duration = "hour"
-	}
+	var posts []*reddit.Post
+	var resp *reddit.Response
+	var err error
+	opts.sanitize()
 	nextToken := opts.NextPage
+	Logger.Info("scarpping reddit", "filter", opts.Filter, "limit", opts.Limit)
 	for {
 		page := min(opts.Limit, 25)
 		opts.Limit -= page
-		posts, resp, err := r.Client.Subreddit.TopPosts(r.ctx, subreddit, &reddit.ListPostOptions{
-			ListOptions: reddit.ListOptions{
+
+		switch opts.Filter {
+		case REDDIT_TOP:
+			posts, resp, err = r.Client.Subreddit.TopPosts(r.ctx, subreddit, &reddit.ListPostOptions{
+				ListOptions: reddit.ListOptions{
+					Limit: page,
+					After: nextToken,
+				},
+				Time: opts.Duration,
+			})
+		case REDDIT_HOT:
+			posts, resp, err = r.Client.Subreddit.HotPosts(r.ctx, subreddit, &reddit.ListOptions{
 				Limit: page,
 				After: nextToken,
-			},
-			Time: opts.Duration,
-		})
+			})
+		case REDDIT_NEW:
+			posts, resp, err = r.Client.Subreddit.NewPosts(r.ctx, subreddit, &reddit.ListOptions{
+				Limit: page,
+				After: nextToken,
+			})
+		}
+
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {
 				Logger.Warn("HIT rate limit wait 2 sec")
@@ -93,6 +120,7 @@ func (r *RedditClient) GetTopPosts(subreddit string, opts ListOptions) ([]*Post,
 				return nil, err
 			}
 		}
+		
 		for _, p := range posts {
 			final_posts = append(final_posts, ConvertFrom(*p))
 		}
@@ -150,4 +178,16 @@ func (r *RedditClient) SearchSubreddits(q string, limit int) ([]*reddit.Subreddi
 		}
 	}
 	return results, err
+}
+
+func (l *ListOptions) sanitize() {
+	if l.Limit == 0 {
+		l.Limit = DEFAULT_LIMIT
+	}
+	if l.Duration == "" {
+		l.Duration = "day"
+	}
+	if l.Filter == "" {
+		l.Filter = REDDIT_TOP
+	}
 }

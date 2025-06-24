@@ -188,8 +188,14 @@ LOOP:
 						DstStore: v.S,
 					}
 					v.I = append(v.I, item)
+					if item.DstStore.FileExists(item.Dst, post.MediaType){
+						log.Warn("file exists not adding it to queue", "file", item.Dst)
+						s.increment(item.TaskId)
+						continue
+					}
 					s.M.ItemQ <- item
 				}
+				//todo: fix update of total element
 				v.Status.TotalItem = int64(len(v.I))
 				log.Info("updating total item", "task", v.Id, "items", v.Status.TotalItem)
 				v.Status.Status = TaskStarted

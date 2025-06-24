@@ -3,6 +3,7 @@ package sources
 import (
 	"time"
 
+	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
 type Post struct {
@@ -15,14 +16,15 @@ type Post struct {
 }
 
 type ScrapeOpts struct {
-	Limit    int
-	Page     int
-	Last     string
-	Duration string
-	LastFrom time.Time
-	NextPage string
+	Limit          int
+	Page           int
+	Last           string
+	Duration       string
+	LastFrom       time.Time
+	NextPage       string
 	SkipCollection bool
-	SkipVideos bool
+	SkipVideos     bool
+	RedditFilter   reddit.PostFilter
 }
 
 type Source interface {

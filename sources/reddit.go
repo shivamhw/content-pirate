@@ -6,15 +6,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync/atomic"
 
 	"github.com/shivamhw/content-pirate/commons"
 	. "github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
-)
-
-const (
-	DEFAULT_LIMIT = 10
 )
 
 type RedditStore struct {
@@ -28,7 +23,7 @@ type RedditStoreOpts struct {
 
 func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, error) {
 	c, err := reddit.NewRedditClient(ctx, reddit.RedditClientOpts{
-		CfgPath:        opts.CfgPath,
+		CfgPath: opts.CfgPath,
 	})
 	if err != nil {
 		return nil, err
@@ -41,30 +36,29 @@ func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, e
 
 func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan Post, err error) {
 	p = make(chan Post, 5)
-	var count int64
-	if opts.Limit <= 0 {
-		opts.Limit = DEFAULT_LIMIT
-	}
-	rposts, err := r.client.GetTopPosts(subreddit, reddit.ListOptions{
+	cnt := 0
+	rOpts := reddit.ListOptions{
 		Limit:    opts.Limit,
 		Page:     opts.Page,
 		NextPage: opts.NextPage,
+		Filter:   opts.RedditFilter,
 		Duration: opts.Duration,
-	})
+	}
+	rposts, err := r.client.GetPosts(subreddit, rOpts)
 	if err != nil {
 		Logger.Error("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
 	}
-	go func(c *int64) {
-		defer func(){
-		close(p)
-		Logger.Info("scrapping post completed.","scraped posts", *c)
+	go func() {
+		defer func() {
+			close(p)
+			Logger.Info("scrapping post completed.", "scraped posts", cnt)
 		}()
 		posts := r.convertToPosts(rposts, subreddit, opts)
 		for _, post := range posts {
 			p <- post
-			atomic.AddInt64(c, 1)
+			cnt++
 		}
-	}(&count)
+	}()
 	return p, nil
 }
 
