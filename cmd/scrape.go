@@ -51,7 +51,7 @@ func scrapeCmd() *cobra.Command {
 				jIds = append(jIds, id)
 			}
 			for _, i := range jIds {
-				s.WaitOnId(i)
+				s.WaitOnId(i, 5)
 			}
 			for _, i := range jIds {
 				j, _ := s.GetJob(i)
@@ -75,6 +75,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dst.CleanOnStart, "cleanOnStart", false, "clean folders")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 10, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.VidWorkers, "vid-worker", 5, "nof vid proccesing worker")
+	cmd.Flags().Int64Var(&sCfg.TimeOut, "time-out", 60, "timeout in seconds")
 	cmd.Flags().IntVar(&sCfg.TopicWorkers, "reddit-worker", 15, "nof reddit proccesing worker")
 	cmd.Flags().StringVar(&filter, "filter", "TOP", "filter: NEW, HOT, TOP")
 	return cmd

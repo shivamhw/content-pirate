@@ -1,6 +1,8 @@
 package sources
 
 import (
+	"context"
+
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/store"
 )
@@ -25,6 +27,7 @@ type Item struct {
 	SourceAc string
 	Ext      string
 	Title    string
+	Ctx      context.Context `json:"-"`
 }
 
 type ItemUpdateOpts struct {

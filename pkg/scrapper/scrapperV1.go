@@ -39,6 +39,7 @@ type ScrapeCfg struct {
 	ImgWorkers   int
 	VidWorkers   int
 	TopicWorkers int
+	TimeOut		 int64 //in seconds
 }
 
 type Mediums struct {
@@ -96,14 +97,14 @@ func (s *ScrapperV1) getStore(d *store.DstPath) (store.Store, error) {
 func (s *ScrapperV1) processImg(i sources.Item) {
 	//download file
 	defer s.increment(i.TaskId)
-	data, err := s.SourceStore.DownloadItem(i)
+	data, err := s.SourceStore.DownloadItem(i.Ctx, i)
 	if err != nil {
 		log.Warn("failed while downloading imgs", "error", err)
 		return
 	}
 
 	//save to dir
-	log.Info("saving file to filesystem", "dst", i.Dst)
+	log.Debug("saving file to filesystem", "dst", i.Dst)
 
 	i.Dst, err = i.DstStore.Write(i.Dst, commons.IMG_TYPE, data)
 	if err != nil {
@@ -133,14 +134,14 @@ func (s *ScrapperV1) increment(id string) {
 }
 
 func (s *ScrapperV1) processVid(i sources.Item) {
-	data, err := s.SourceStore.DownloadItem(i)
+	data, err := s.SourceStore.DownloadItem(i.Ctx, i)
 	if err != nil {
 		log.Warn("failed while downloading imgs", "error", err)
 		return
 	}
 
 	//save to dir
-	log.Info("saving file to filesystem", "dst", i.Dst)
+	log.Debug("saving file to filesystem", "dst", i.Dst)
 	i.Dst, err = i.DstStore.Write(i.Dst, commons.VID_TYPE, data)
 	if err != nil {
 		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
@@ -159,8 +160,8 @@ LOOP:
 			if !ok {
 				break LOOP
 			}
-			log.Info("Scrapping", "src", v)
-			p, err := s.SourceStore.ScrapePosts(v.J.SrcAc, sources.ScrapeOpts(v.J.Opts))
+			log.Debug("Scrapping", "src", v)
+			p, err := s.SourceStore.ScrapePosts(s.ctx, v.J.SrcAc, sources.ScrapeOpts(v.J.Opts))
 			if err != nil {
 				log.Error("Error while scraping", "source", v)
 				continue
@@ -174,43 +175,47 @@ LOOP:
 					if !v.J.Dst.CombineDir {
 						dst = fmt.Sprintf("%s/%s", v.J.SrcAc, dst)
 					}
-
+					ctx := s.ctx
+					
+					if s.sCfg.TimeOut > 0 {
+						ctx, _ = context.WithTimeout(ctx, time.Duration(s.sCfg.TimeOut) *time.Second)
+					}
 					item := sources.Item{
 						Id:       post.Id,
 						TaskId:   v.Id,
 						Src:      post.SrcLink,
 						Title:    post.Title,
-						FileName: fileName, 
+						FileName: fileName,
 						Dst:      dst,
 						Type:     post.MediaType,
 						Ext:      post.Ext,
 						SourceAc: post.SourceAc,
 						DstStore: v.S,
+						Ctx:      ctx,
 					}
 					v.I = append(v.I, item)
-					if item.DstStore.FileExists(item.Dst, post.MediaType){
+					if item.DstStore.FileExists(item.Dst, post.MediaType) {
 						log.Warn("file exists not adding it to queue", "file", item.Dst)
 						s.increment(item.TaskId)
 						continue
 					}
 					s.M.ItemQ <- item
-				}
-				//todo: fix update of total element
-				v.Status.TotalItem = int64(len(v.I))
-				log.Info("updating total item", "task", v.Id, "items", v.Status.TotalItem)
-				v.Status.Status = TaskStarted
-				nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
-					TaskStatus: &v.Status,
-					Items: v.I,
-				})
-				v.Status = nTask.Status
-				if err != nil {
-					log.Error("updating status of task failed", "id", v.Id)
+					v.Status.TotalItem = int64(len(v.I))
+					log.Debug("updating total item", "task", v.Id, "items", v.Status.TotalItem)
+					v.Status.Status = TaskStarted
+					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
+						TaskStatus: &v.Status,
+						Items:      v.I,
+					})
+					v.Status = nTask.Status
+					if err != nil {
+						log.Error("updating status of task failed", "id", v.Id)
+					}
 				}
 			}(&wg)
 		case <-t.C:
 			{
-				log.Info("waiting for topics to scrape")
+				log.Info("scrapper heartbeat......")
 			}
 		}
 	}
@@ -224,7 +229,7 @@ func (s *ScrapperV1) imgWorker(id int) {
 	defer s.swg.Done()
 	fmt.Println("starting img woker ", id)
 	for j := range s.M.imgq {
-		log.Debug("processing img ","title", j.Title)
+		log.Debug("processing img ", "title", j.Title)
 		s.processImg(j)
 	}
 	fmt.Println("Exited img worker ", id)
@@ -234,7 +239,7 @@ func (s *ScrapperV1) vidWorker(id int) {
 	defer s.swg.Done()
 	fmt.Println("starting vid woker ", id)
 	for j := range s.M.vidq {
-		log.Debug("processing VID ","title", j.Title)
+		log.Debug("processing VID ", "title", j.Title)
 		s.processVid(j)
 	}
 	fmt.Println("Exited vid worker ", id)
@@ -357,13 +362,19 @@ func (s *ScrapperV1) CheckJob(id string) (TaskStatus, error) {
 	return t.Status, nil
 }
 
-func (s *ScrapperV1) WaitOnId(id string) {
+func (s *ScrapperV1) WaitOnId(id string, waitFor int) bool {
 	//check if id is done
 	log.Info("waiting to complete", "id", id)
+	deadline := time.Now().Add(time.Duration(waitFor) * time.Minute) // time out after 5 mins
 	for {
+		now := time.Now()
+		if now.After(deadline) {
+			log.Error("deadline excedded for task", "task", id)
+			return false
+		}
 		s, err := s.CheckJob(id)
 		if err != nil {
-			return
+			return false
 		}
 		log.Info("status", "task", id, "Completed", s.ItemDone, "Total", s.TotalItem)
 		time.Sleep(5 * time.Second)
@@ -371,6 +382,7 @@ func (s *ScrapperV1) WaitOnId(id string) {
 			break
 		}
 	}
+	return true
 }
 
 func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {

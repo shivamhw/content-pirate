@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"time"
 
 	"github.com/shivamhw/content-pirate/pkg/reddit"
@@ -28,6 +29,6 @@ type ScrapeOpts struct {
 }
 
 type Source interface {
-	ScrapePosts(string, ScrapeOpts) (chan Post, error)
-	DownloadItem(Item) ([]byte, error)
+	ScrapePosts(context.Context, string, ScrapeOpts) (chan Post, error)
+	DownloadItem(context.Context, Item) ([]byte, error)
 }

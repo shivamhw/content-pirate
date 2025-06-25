@@ -34,7 +34,7 @@ func NewRedditStore(ctx context.Context, opts *RedditStoreOpts) (*RedditStore, e
 	}, nil
 }
 
-func (r *RedditStore) ScrapePosts(subreddit string, opts ScrapeOpts) (p chan Post, err error) {
+func (r *RedditStore) ScrapePosts(_ context.Context, subreddit string, opts ScrapeOpts) (p chan Post, err error) {
 	p = make(chan Post, 5)
 	cnt := 0
 	rOpts := reddit.ListOptions{
@@ -66,10 +66,10 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 	for _, post := range rposts {
 		// if gallary link
 		if strings.Contains(post.URL, "/gallery/") {
-			Logger.Info("found gallery", "url", post.URL)
+			Logger.Debug("found gallery", "url", post.URL)
 			for _, item := range post.GalleryData.Items {
 				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, commons.GetMIME(post.MediaMetadata[item.MediaID].MIME))
-				Logger.Info("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
+				Logger.Debug("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
 				if commons.IsImgLink(link) {
 					post := Post{
 						Id:        fmt.Sprintf("%d", item.ID),
@@ -117,8 +117,12 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 	return
 }
 
-func (r *RedditStore) DownloadItem(i Item) ([]byte, error) {
-	resp, err := http.Get(i.Src)
+func (r *RedditStore) DownloadItem(ctx context.Context, i Item) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, i.Src, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to download %s because %s code", i.Src, err)
 	}
