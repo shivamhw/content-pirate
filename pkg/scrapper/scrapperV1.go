@@ -194,23 +194,23 @@ LOOP:
 						Ctx:      ctx,
 					}
 					v.I = append(v.I, item)
+					v.Status.TotalItem = int64(len(v.I))
+					log.Debug("updating total item", "task", v.Id, "items", v.Status.TotalItem)
+					v.Status.Status = TaskStarted
+					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
+						TaskStatus: &v.Status,
+						Items:      []sources.Item{item},
+					})
+					v.Status = nTask.Status
+					if err != nil {
+						log.Error("updating status of task failed", "id", v.Id)
+					}
 					if item.DstStore.FileExists(item.Dst, post.MediaType) {
 						log.Warn("file exists not adding it to queue", "file", item.Dst)
 						s.increment(item.TaskId)
 						continue
 					}
 					s.M.ItemQ <- item
-					v.Status.TotalItem = int64(len(v.I))
-					log.Debug("updating total item", "task", v.Id, "items", v.Status.TotalItem)
-					v.Status.Status = TaskStarted
-					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
-						TaskStatus: &v.Status,
-						Items:      v.I,
-					})
-					v.Status = nTask.Status
-					if err != nil {
-						log.Error("updating status of task failed", "id", v.Id)
-					}
 				}
 			}(&wg)
 		case <-t.C:
