@@ -29,6 +29,7 @@ type Dialog struct {
 	VisibleName string  `json:"visible_name,omitempty" comment:"Title of channel and group, first and last name of user. If empty, output '-'"`
 	Username    string  `json:"username,omitempty" comment:"Username of dialog. If empty, output '-'"`
 	Topics      []Topic `json:"topics,omitempty" comment:"Topics of dialog. If not set, output '-'"`
+	AccessHash  int64
 }
 
 type Topic struct {
@@ -104,8 +105,10 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 		switch t := d.Peer.(type) {
 		case *tg.InputPeerUser:
 			r = processUser(t.UserID, d.Entities)
+			r.AccessHash = t.AccessHash
 		case *tg.InputPeerChannel:
 			r = processChannel(ctx, c.API(), t.ChannelID, d.Entities)
+			r.AccessHash = t.AccessHash
 		case *tg.InputPeerChat:
 			r = processChat(t.ChatID, d.Entities)
 		}

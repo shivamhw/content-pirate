@@ -3,151 +3,224 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"path/filepath"
+	log "log/slog"
+	"math/rand"
 	"time"
 
+	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
-	"github.com/iyear/tdl/app/chat"
-	"github.com/iyear/tdl/app/dl"
+	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/tg"
 	"github.com/iyear/tdl/core/logctx"
-	tclientcore "github.com/iyear/tdl/core/tclient"
 	"github.com/iyear/tdl/pkg/tclient"
 )
 
 type Telegram struct {
-	users map[string]*UserData
 	ctx   context.Context
+	user  *UserData
+	c     *telegram.Client
+	close *bg.StopFunc
 }
 
 type UserData struct {
 	PhoneNumber string
-	Session     *Store
+	Store       *Store
 }
 
-func NewTelegram(ctx context.Context) *Telegram {
-	return &Telegram{
-		users: make(map[string]*UserData),
-		ctx:   ctx,
-	}
+type Recipient struct {
+	AccessHash int64
+	UserId     int64
 }
 
-func (t *Telegram) Login(opts *UserData, clean bool) error {
-	store, err := NewStore(t.ctx, opts.PhoneNumber, clean)
-	defer func() {
-		if err != nil {
-			store.Close()
-		}
-	}()
+type SearchOpts = tg.MessagesGetHistoryRequest
 
+func NewTelegram(ctx context.Context, user *UserData) (*Telegram, error) {
+	store, err := GetOrCreateStore(ctx, user.PhoneNumber)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	t.users[opts.PhoneNumber] = &UserData{
-		PhoneNumber: opts.PhoneNumber,
-		Session:     store,
+	user.Store = store
+	client, err := GetClientWithStore(ctx, store)
+	if err != nil {
+		return nil, err
 	}
-	t.LoginWithCode(t.ctx, opts)
-	return nil
+	stop, err := bg.Connect(client)
+	if err != nil {
+		return nil, err
+	}
+	return &Telegram{
+		ctx:   ctx,
+		user:  user,
+		c:     client,
+		close: &stop,
+	}, nil
 }
 
-func (t *Telegram) GetStorage(opts *UserData) (*Store, error) {
-	user, ok := t.users[opts.PhoneNumber]
-	if !ok {
-		slog.Error("user not found, creating one", "phone", opts.PhoneNumber)
-		store, err := GetOrCreateStore(t.ctx, opts.PhoneNumber)
-		if err != nil {
-			return nil, err
-		}
-		return store, nil
+func (t *Telegram) WhoAmI() (status *auth.Status, err error) {
+	status, err = t.c.Auth().Status(t.ctx)
+	if err != nil {
+		return nil, err
 	}
-	return user.Session, nil
+	return status, err
 }
 
-func (t *Telegram) GetClientWithStore(opts *UserData, store *Store, login bool) (*telegram.Client, error) {
-	c, err := tclient.New(t.ctx, tclient.Options{
+func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, error) {
+	c, err := tclient.New(ctx, tclient.Options{
 		KV:               store.Kvd,
 		UpdateHandler:    nil,
-		ReconnectTimeout: 5 * time.Minute,
-	}, login)
+		ReconnectTimeout: 1 * time.Minute,
+	}, false)
 	if err != nil {
 		return nil, err
 	}
 	return c, nil
 }
 
-func (t *Telegram) ListChats(opts *UserData) error {
-	var result []*Dialog
-	store, err := t.GetStorage(opts)
+func (t *Telegram) ListChats() (result []*Dialog, err error) {
+	result, err = List(logctx.Named(t.ctx, "ls"), t.c, t.user.Store.Kvd, ListOptions{Filter: "true"})
 	if err != nil {
-		return err
-	}
-	c, err := t.GetClientWithStore(opts, store, false)
-	if err != nil {
-		return err
-	}
-	err = tclientcore.RunWithAuth(t.ctx, c, func(ctx context.Context) error {
-		result, err = List(logctx.Named(ctx, "ls"), c, store.Kvd, ListOptions{Filter: "true"})
-		return err
-	})
-	if err != nil {
-		return err
+		return result, err
 	}
 	for _, r := range result {
-		fmt.Println(r.VisibleName)
+		log.Info(r.VisibleName)
 	}
-	return nil
+	return result, nil
 }
 
-type ExportOpts struct {
-	ChatId string
-	Limit  int
-}
-
-func (t *Telegram) ExportChat(user *UserData, opts ExportOpts) error {
-	exprtOpts := chat.ExportOptions{
-		Chat:      opts.ChatId,
-		Type:      chat.ExportTypeLast,
-		Input:     []int{opts.Limit},
-		Filter:    "true",
-		OnlyMedia: true,
-	}
-	store, err := t.GetStorage(user)
-	if err != nil {
-		return err
-	}
-	exprtOpts.Output = filepath.Join(store.BasePath, opts.ChatId)
-	c, err := t.GetClientWithStore(user, store, false)
-	if err != nil {
-		return err
-	}
-	err = tclientcore.RunWithAuth(t.ctx, c, func(ctx context.Context) error {
-		return chat.Export(ctx, c, store.Kvd, exprtOpts)
+func (t *Telegram) SearchChats(q string) (result []*Dialog, err error) {
+	resolved, err := t.c.API().ContactsSearch(t.ctx, &tg.ContactsSearchRequest{
+		Q:     q,
+		Limit: 5,
 	})
-	return err
+	for _, chat := range resolved.Chats {
+		switch c := chat.(type) {
+		case *tg.Channel:
+			r := &Dialog{
+				ID:          c.ID,
+				AccessHash:  c.AccessHash,
+				Type:        DialogChannel,
+				Username:    c.Username,
+				VisibleName: c.Title,
+			}
+			result = append(result, r)
+		}
+	}
+	return result, err
+
 }
 
-type DownloadOpts struct {
-	ChatId string
-}
-
-func (t *Telegram) DownloadExport(user *UserData, opts DownloadOpts) error {
-	dwnldOpts := dl.Options{
-		Files:    []string{"/home/shivamhw/Code/content-pirate/Rdata/+918085026377/1237061921"},
-		Continue: true,
-		Template: "{{ .DialogID }}_{{ .MessageID }}_{{ filenamify .FileName }}",
-	}
-	store, err := t.GetStorage(user)
-	if err != nil {
-		return err
-	}
-	dwnldOpts.Dir = filepath.Join(store.BasePath, opts.ChatId+"test", "files")
-	c, err := t.GetClientWithStore(user, store, false)
-	if err != nil {
-		return err
-	}
-	err = tclientcore.RunWithAuth(t.ctx, c, func(ctx context.Context) error {
-		return dl.Run(ctx, c, store.Kvd, dwnldOpts)
+func (t *Telegram) GetUserFromUsername(username string) (user *tg.User, err error) {
+	res, err := t.c.API().ContactsResolveUsername(t.ctx, &tg.ContactsResolveUsernameRequest{
+		Username: username,
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, fmt.Errorf("user not found %s", username)
+	}
+	return res.Users[0].(*tg.User), nil
+}
+
+func (t *Telegram) SearchUsers(q string) (result []*Dialog, err error) {
+	resolved, err := t.c.API().ContactsSearch(t.ctx, &tg.ContactsSearchRequest{
+		Q:     q,
+		Limit: 5,
+	})
+	for _, chat := range resolved.Users {
+		switch c := chat.(type) {
+		case *tg.User:
+			r := &Dialog{
+				ID:          c.ID,
+				AccessHash:  c.AccessHash,
+				Type:        DialogPrivate,
+				Username:    c.Username,
+				VisibleName: c.FirstName,
+			}
+			result = append(result, r)
+		}
+	}
+	return result, err
+
+}
+
+
+func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []*tg.Message, err error) {
+	peer := &tg.InputPeerUser{
+		UserID:     chat.UserId,
+		AccessHash: chat.AccessHash,
+	}
+	opts.Peer = peer
+	his, err := t.c.API().MessagesGetHistory(t.ctx, opts)
+	if err != nil {
+		return result, err
+	}
+	for _, m := range his.(*tg.MessagesMessagesSlice).Messages {
+		t, ok := m.(*tg.Message)
+		if !ok {
+			log.Error("cant convert to msg", "hist", "m")
+			return result, nil
+		}
+		result = append(result, t)
+	}
+	return result, nil
+}
+
+func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.MessagesBotCallbackAnswer, err error) {
+	peer := &tg.InputPeerUser{
+		UserID:     chat.UserId,
+		AccessHash: chat.AccessHash,
+	}
+	resp, err = t.c.API().MessagesGetBotCallbackAnswer(t.ctx, &tg.MessagesGetBotCallbackAnswerRequest{
+		Peer:  peer,
+		MsgID: msgId,
+		Data:  btnId,
+	})
+	if err != nil {
+		log.Error("click failed: %s", err.Error())
+		return nil, err
+	}
+
+	log.Info("Callback response:", resp)
+	return resp, nil
+}
+
+func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err error) {
+	peer := &tg.InputPeerUser{
+		UserID:     to.UserId,
+		AccessHash: to.AccessHash,
+	}
+	res, err := t.c.API().MessagesSendMessage(t.ctx, &tg.MessagesSendMessageRequest{
+		Peer:     peer,
+		Message:  msg,
+		RandomID: rand.Int63(),
+	})
+	if err != nil {
+		log.Error("err", "e", err)
+		return nil, err
+	}
+	nMsg = extractSentMessage(res)
+	return nMsg, err
+}
+
+
+func (t *Telegram) ForwardMsg(from *Recipient, to *Recipient, msgId int) (nMsg *tg.Message, err error) {
+	resp, err := t.c.API().MessagesForwardMessages(t.ctx, &tg.MessagesForwardMessagesRequest{
+		FromPeer: &tg.InputPeerUser{
+			UserID:     from.UserId,
+			AccessHash: from.AccessHash,
+		},
+		ToPeer: &tg.InputPeerChannel{
+			ChannelID:  to.UserId,
+			AccessHash: to.AccessHash,
+		},
+		ID:         []int{msgId},
+		RandomID:   []int64{rand.Int63()},
+		DropAuthor: true, // ✅ Hides "Forwarded from ..."
+	})
+	if err != nil {
+		return nil, err
+	}
+	nMsg = extractSentMessage(resp)
+	return nMsg, nil
 }

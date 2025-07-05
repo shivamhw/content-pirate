@@ -15,7 +15,7 @@ const (
 type Job struct {
 	SrcAc       string
 	SrcId       string
-	Dst         store.DstPath
+	Dst         []store.DstPath
 	Opts        JobOpts
 	SourceStore SourceType
 }

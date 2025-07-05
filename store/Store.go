@@ -2,11 +2,25 @@ package store
 
 import "github.com/shivamhw/content-pirate/commons"
 
+type DstPath struct {
+	BasePath     string
+	CleanOnStart bool
+	Type 		 string
+}
 
 type Store interface {
-	Write(path string,t commons.MediaType, data []byte) (string, error)
-	FileExists(path string,t commons.MediaType) bool
+	Write(i *commons.Item) (string, error)
+	ItemExists(i *commons.Item) bool
 	DirExists(string) bool
-	CreateDir(string)
+	CreateDir(string) error
 	CleanAll(string) error
+}
+
+
+func GetStore(d *DstPath) (Store, error) {
+	if store, err := NewFileStore(d); err != nil {
+		return nil, err
+	} else {
+		return store, nil
+	}
 }

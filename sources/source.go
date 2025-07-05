@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
@@ -30,5 +31,5 @@ type ScrapeOpts struct {
 
 type Source interface {
 	ScrapePosts(context.Context, string, ScrapeOpts) (chan Post, error)
-	DownloadItem(context.Context, Item) ([]byte, error)
+	DownloadItem(context.Context, *commons.Item) (error)
 }

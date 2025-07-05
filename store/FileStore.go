@@ -1,9 +1,9 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/shivamhw/content-pirate/commons"
 	. "github.com/shivamhw/content-pirate/pkg/log"
@@ -14,13 +14,6 @@ var DefaultPaths = map[string]string{
 	commons.VID_TYPE: "vids",
 }
 
-type DstPath struct {
-	ImgPath      string
-	VidPath      string
-	BasePath     string
-	CombineDir   bool
-	CleanOnStart bool
-}
 
 type FileStore struct {
 	Dst *DstPath
@@ -46,27 +39,20 @@ func (f *FileStore) DirExists(path string) bool {
 	return info.IsDir()
 }
 
-func (f *FileStore) Write(path string, t commons.MediaType, data []byte) (string, error) {
-	switch t {
-	case commons.IMG_TYPE:
-		path = filepath.Join(f.Dst.BasePath, f.Dst.ImgPath, path)
-	case commons.VID_TYPE:
-		path = filepath.Join(f.Dst.BasePath, f.Dst.VidPath, path)
-	}
-	if !f.Dst.CombineDir {
-		f.CreateDir(filepath.Dir(path))
-	}
+func (f *FileStore) Write(i *commons.Item) (string, error) {
+	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.Dst)
+	f.CreateDir(filepath.Dir(path))
 	outfile, err := os.Create(path)
 	if err != nil {
 		return path, err
 	}
 	defer outfile.Close()
-	_, err = outfile.Write(data)
+	_, err = outfile.Write(i.Data)
 	return path,err
 }
 
-func (f *FileStore) CreateDir(path string) {
-	os.MkdirAll(path, 0755)
+func (f *FileStore) CreateDir(path string) (err error) {
+	return os.MkdirAll(path, 0755)
 }
 
 func (f *FileStore) CleanAll(path string) error {
@@ -79,23 +65,16 @@ func (f *FileStore) CleanAll(path string) error {
 	return err
 }
 
-func (d *DstPath) sanitize() error {
+func (d *DstPath) sanitize() (err error) {
 	if d.BasePath == "" {
 		d.BasePath = "./download"
 	}
-	if d.ImgPath == "" {
-		d.ImgPath = filepath.Join(d.BasePath, DefaultPaths[commons.IMG_TYPE])
-	}
-	if d.VidPath == "" {
-		d.VidPath = filepath.Join(d.BasePath, DefaultPaths[commons.VID_TYPE])
-	}
-	d.BasePath = strings.TrimSpace(d.BasePath)
-	d.ImgPath = strings.TrimSpace(d.ImgPath)
-	d.VidPath = strings.TrimSpace(d.VidPath)
-	return nil
+	d.BasePath, err  = filepath.Abs(d.BasePath)
+	Logger.Info("download path", "path", d.BasePath)
+	return err
 }
 
-func (f *FileStore) createStructure() {
+func (f *FileStore) createStructure() (err error) {
 	if f.Dst.CleanOnStart {
 		err := f.CleanAll(f.Dst.BasePath)
 		if err != nil {
@@ -104,19 +83,11 @@ func (f *FileStore) createStructure() {
 			Logger.Info("cleanup success")
 		}
 	}
-	Logger.Info("creating ", "path", f.Dst.ImgPath)
-	Logger.Info("creating ", "path", f.Dst.VidPath)
-	f.CreateDir(filepath.Join(f.Dst.BasePath, f.Dst.ImgPath))
-	f.CreateDir(filepath.Join(f.Dst.BasePath, f.Dst.VidPath))
+	return f.CreateDir(f.Dst.BasePath)
 }
 
-func (f *FileStore) FileExists(path string, t commons.MediaType) (bool) {
-	switch t {
-	case commons.IMG_TYPE:
-		path = filepath.Join(f.Dst.BasePath, f.Dst.ImgPath, path)
-	case commons.VID_TYPE:
-		path = filepath.Join(f.Dst.BasePath, f.Dst.VidPath, path)
-	}
+func (f *FileStore) ItemExists(i *commons.Item) (bool) {
+	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.Dst)
 	if _, err := os.Stat(path); err != nil {
 		return false
 	}

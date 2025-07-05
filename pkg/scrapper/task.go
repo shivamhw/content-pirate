@@ -1,7 +1,7 @@
 package scrapper
 
 import (
-	"github.com/shivamhw/content-pirate/sources"
+	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/store"
 )
 
@@ -22,12 +22,12 @@ type TaskStatus struct {
 type Task struct {
 	Id     string
 	J      Job
-	I      []sources.Item
+	I      []commons.Item
 	Status TaskStatus
-	S      store.Store `json:"-"`
+	S      []store.Store `json:"-"`
 }
 
 type TaskUpdateOpts struct {
 	*TaskStatus
-	Items []sources.Item
+	Items []commons.Item
 }

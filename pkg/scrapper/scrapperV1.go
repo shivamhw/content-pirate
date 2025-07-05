@@ -2,14 +2,12 @@ package scrapper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	log "log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/kv"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
@@ -18,13 +16,14 @@ import (
 )
 
 type ScrapperV1 struct {
-	SourceStore sources.Source
-	sCfg        *ScrapeCfg
-	ctx         context.Context
-	M           *Mediums
-	swg         sync.WaitGroup
-	kv          kv.KV
-	l           *sync.Mutex
+	SourceStore  sources.Source
+	sCfg         *ScrapeCfg
+	ctx          context.Context
+	M            *Mediums
+	swg          sync.WaitGroup
+	kv           kv.KV
+	l            *sync.Mutex
+	taskStoreIdx map[string][]store.Store
 }
 
 type AuthCfg struct {
@@ -39,14 +38,14 @@ type ScrapeCfg struct {
 	ImgWorkers   int
 	VidWorkers   int
 	TopicWorkers int
-	TimeOut		 int64 //in seconds
+	TimeOut      int64 //in seconds
 }
 
 type Mediums struct {
 	TaskQ chan *Task
-	ItemQ chan sources.Item
-	imgq  chan sources.Item
-	vidq  chan sources.Item
+	ItemQ chan DownloadItemJob
+	imgq  chan DownloadItemJob
+	vidq  chan DownloadItemJob
 }
 
 var (
@@ -63,16 +62,17 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 	//creating mediums
 	m := &Mediums{
 		TaskQ: make(chan *Task),
-		ItemQ: make(chan sources.Item),
-		imgq:  make(chan sources.Item, 10),
-		vidq:  make(chan sources.Item, 10),
+		ItemQ: make(chan DownloadItemJob),
+		imgq:  make(chan DownloadItemJob, 10),
+		vidq:  make(chan DownloadItemJob, 10),
 	}
 	scr = &ScrapperV1{
-		sCfg: cfg,
-		ctx:  context.Background(),
-		M:    m,
-		kv:   kv.GetInMemoryKv(),
-		l:    &sync.Mutex{},
+		sCfg:         cfg,
+		ctx:          context.Background(),
+		M:            m,
+		kv:           kv.GetInMemoryKv(),
+		l:            &sync.Mutex{},
+		taskStoreIdx: make(map[string][]store.Store),
 	}
 
 	scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
@@ -86,69 +86,36 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 	return scr, nil
 }
 
-func (s *ScrapperV1) getStore(d *store.DstPath) (store.Store, error) {
-	if store, err := store.NewFileStore(d); err != nil {
-		return nil, err
-	} else {
-		return store, nil
-	}
-}
-
-func (s *ScrapperV1) processImg(i sources.Item) {
+func (s *ScrapperV1) process(i *DownloadItemJob) {
 	//download file
-	defer s.increment(i.TaskId)
-	data, err := s.SourceStore.DownloadItem(i.Ctx, i)
+	defer s.increment(i.T.Id)
+	err := s.SourceStore.DownloadItem(i.I.Ctx, i.I)
 	if err != nil {
-		log.Warn("failed while downloading imgs", "error", err)
+		log.Warn("failed while downloading", "name", i.I.FileName, "error", err)
 		return
 	}
 
 	//save to dir
-	log.Debug("saving file to filesystem", "dst", i.Dst)
+	log.Debug("saving file to filesystem", "dst", i.I.Dst)
 
-	i.Dst, err = i.DstStore.Write(i.Dst, commons.IMG_TYPE, data)
-	if err != nil {
-		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
-		return
+	if err:= s.saveItem(i); err != nil {
+		log.Error("error saving", "item", i.I.FileName, "err", err)
 	}
-
 	atomic.AddInt64(&imgCounter, 1)
 }
 
-func (s *ScrapperV1) increment(id string) {
+func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
+	for _, s := range i.stores {
+		if dst, err := s.Write(i.I); err != nil {
+			return err
+		} else {
 
-	log.Debug("incrementing item done", "taskId", id)
-	t, err := s.GetJob(id)
-	if err != nil {
-		log.Error("error incrementing", "taskId", id)
-		return
+			i.I.Dst = dst
+		}
 	}
-	atomic.AddInt64(&t.Status.ItemDone, 1)
-	_, err = s.UpdateItemDone(id, TaskUpdateOpts{
-		TaskStatus: &t.Status,
-	})
-	if err != nil {
-		log.Error("error incrementing", "taskId", id)
-		return
-	}
+	return
 }
 
-func (s *ScrapperV1) processVid(i sources.Item) {
-	data, err := s.SourceStore.DownloadItem(i.Ctx, i)
-	if err != nil {
-		log.Warn("failed while downloading imgs", "error", err)
-		return
-	}
-
-	//save to dir
-	log.Debug("saving file to filesystem", "dst", i.Dst)
-	i.Dst, err = i.DstStore.Write(i.Dst, commons.VID_TYPE, data)
-	if err != nil {
-		log.Error("err", fmt.Sprint("failed to save file %s to %s as %s", i.FileName, i.Dst, err))
-		return
-	}
-	atomic.AddInt64(&vidCounter, 1)
-}
 
 func (s *ScrapperV1) subWorker() {
 	t := time.NewTicker(5 * time.Second)
@@ -171,18 +138,14 @@ LOOP:
 				defer wg.Done()
 				for post := range p {
 					fileName := fmt.Sprintf("%s.%s", post.Id, post.Ext)
-					dst := fmt.Sprintf("%s.%s", post.Id, post.Ext)
-					if !v.J.Dst.CombineDir {
-						dst = fmt.Sprintf("%s/%s", v.J.SrcAc, dst)
-					}
+					dst := fmt.Sprintf("%s/%s.%s",v.J.SrcAc, post.Id, post.Ext)
 					ctx := s.ctx
-					
+
 					if s.sCfg.TimeOut > 0 {
-						ctx, _ = context.WithTimeout(ctx, time.Duration(s.sCfg.TimeOut) *time.Second)
+						ctx, _ = context.WithTimeout(ctx, time.Duration(s.sCfg.TimeOut)*time.Second)
 					}
-					item := sources.Item{
+					item := commons.Item{
 						Id:       post.Id,
-						TaskId:   v.Id,
 						Src:      post.SrcLink,
 						Title:    post.Title,
 						FileName: fileName,
@@ -190,7 +153,6 @@ LOOP:
 						Type:     post.MediaType,
 						Ext:      post.Ext,
 						SourceAc: post.SourceAc,
-						DstStore: v.S,
 						Ctx:      ctx,
 					}
 					v.I = append(v.I, item)
@@ -199,18 +161,23 @@ LOOP:
 					v.Status.Status = TaskStarted
 					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
 						TaskStatus: &v.Status,
-						Items:      []sources.Item{item},
+						Items:      []commons.Item{item},
 					})
 					v.Status = nTask.Status
 					if err != nil {
 						log.Error("updating status of task failed", "id", v.Id)
 					}
-					if item.DstStore.FileExists(item.Dst, post.MediaType) {
-						log.Warn("file exists not adding it to queue", "file", item.Dst)
-						s.increment(item.TaskId)
+					stores := s.filterStores(v, &item)
+					if len(stores) <= 0 {
+						log.Warn("file exists in all stores not adding it to queue", "file", item.Dst)
+						s.increment(v.Id)
 						continue
 					}
-					s.M.ItemQ <- item
+					s.M.ItemQ <- DownloadItemJob{
+						I: &item,
+						T: v,
+						stores: stores,
+					}
 				}
 			}(&wg)
 		case <-t.C:
@@ -225,24 +192,25 @@ LOOP:
 	log.Warn("stopped recieving topics to scrape... exiting")
 }
 
-func (s *ScrapperV1) imgWorker(id int) {
-	defer s.swg.Done()
-	fmt.Println("starting img woker ", id)
-	for j := range s.M.imgq {
-		log.Debug("processing img ", "title", j.Title)
-		s.processImg(j)
+func (s *ScrapperV1) filterStores(t *Task, i *commons.Item) (fStores []store.Store) {
+	for _, st := range s.taskStoreIdx[t.Id] {
+		if st.ItemExists(i) {
+			log.Warn("file already exist", "file", i.FileName)
+			continue
+		}
+		fStores = append(fStores, st)
 	}
-	fmt.Println("Exited img worker ", id)
+	return 
 }
 
-func (s *ScrapperV1) vidWorker(id int) {
+func (s *ScrapperV1) queueWorker(id int, q chan DownloadItemJob) {
 	defer s.swg.Done()
-	fmt.Println("starting vid woker ", id)
-	for j := range s.M.vidq {
-		log.Debug("processing VID ", "title", j.Title)
-		s.processVid(j)
+	fmt.Println("starting img woker ", id)
+	for j := range q {
+		log.Debug("processing", "title", j.I.Title)
+		s.process(&j)
 	}
-	fmt.Println("Exited vid worker ", id)
+	fmt.Println("Exited worker ", id)
 }
 
 func (s *ScrapperV1) startWorkers() {
@@ -252,12 +220,12 @@ func (s *ScrapperV1) startWorkers() {
 
 	for i := range s.sCfg.ImgWorkers {
 		s.swg.Add(1)
-		go s.imgWorker(i)
+		go s.queueWorker(i, s.M.imgq)
 	}
 
 	for i := range s.sCfg.VidWorkers {
 		s.swg.Add(1)
-		go s.vidWorker(i)
+		go s.queueWorker(i, s.M.vidq)
 	}
 }
 
@@ -275,11 +243,11 @@ LOOP:
 				close(s.M.vidq)
 				break LOOP
 			}
-			if v.Type == commons.VID_TYPE {
+			if v.I.Type == commons.VID_TYPE {
 				s.M.vidq <- v
 			}
 
-			if v.Type == commons.IMG_TYPE {
+			if v.I.Type == commons.IMG_TYPE {
 				s.M.imgq <- v
 			}
 		}
@@ -309,128 +277,4 @@ func (m *Mediums) closeAll() {
 
 func (s *ScrapperV1) Stop() {
 	log.Warn("Stopping scrapper")
-}
-
-func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
-	id = uuid.NewString()
-	//create task from job
-	store, err := s.getStore(&j.Dst)
-	if err != nil {
-		return "", err
-	}
-	t := Task{
-		Id: id,
-		J:  j,
-		I:  []sources.Item{},
-		Status: TaskStatus{
-			ItemDone:  0,
-			TotalItem: 0,
-			Status:    TaskCreated,
-		},
-		S: store,
-	}
-	//put task to queue
-	log.Info("submitting task ", "task", t)
-	data, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, data)
-	if err != nil {
-		return "", err
-	}
-	s.M.TaskQ <- &t
-	return id, nil
-}
-
-func (s *ScrapperV1) GetJob(id string) (Task, error) {
-	var t Task
-	data, err := s.kv.Get("task", id)
-	if err != nil {
-		return Task{}, err
-	}
-	err = json.Unmarshal(data, &t)
-	if err != nil {
-		log.Error(err.Error())
-		return Task{}, err
-	}
-	return t, nil
-}
-
-func (s *ScrapperV1) CheckJob(id string) (TaskStatus, error) {
-	t, err := s.GetJob(id)
-	if err != nil {
-		return TaskStatus{}, err
-	}
-	return t.Status, nil
-}
-
-func (s *ScrapperV1) WaitOnId(id string, waitFor int) bool {
-	//check if id is done
-	log.Info("waiting to complete", "id", id)
-	deadline := time.Now().Add(time.Duration(waitFor) * time.Minute) // time out after 5 mins
-	for {
-		now := time.Now()
-		if now.After(deadline) {
-			log.Error("deadline excedded for task", "task", id)
-			return false
-		}
-		s, err := s.CheckJob(id)
-		if err != nil {
-			return false
-		}
-		log.Info("status", "task", id, "Completed", s.ItemDone, "Total", s.TotalItem)
-		time.Sleep(5 * time.Second)
-		if s.ItemDone >= s.TotalItem && s.Status != TaskCreated {
-			break
-		}
-	}
-	return true
-}
-
-func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
-	defer s.l.Unlock()
-	s.l.Lock()
-	var t Task
-	data, err := s.kv.Get("task", id)
-	if err != nil {
-		return Task{}, err
-	}
-	err = json.Unmarshal(data, &t)
-	if err != nil {
-		return Task{}, err
-	}
-	if opts.TaskStatus != nil {
-		t.Status.TotalItem = opts.TaskStatus.TotalItem
-		t.Status.Status = opts.TaskStatus.Status
-	}
-	if opts.Items != nil {
-		t.I = append(t.I, opts.Items...)
-	}
-	// hack alert
-	v, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, v)
-	if err != nil {
-		return Task{}, err
-	}
-	return t, nil
-}
-
-func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error) {
-	defer s.l.Unlock()
-	s.l.Lock()
-	var t Task
-	data, err := s.kv.Get("task", id)
-	if err != nil {
-		return Task{}, err
-	}
-	err = json.Unmarshal(data, &t)
-	if err != nil {
-		return Task{}, err
-	}
-	t.Status.ItemDone = opts.ItemDone
-	// hack alert
-	v, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, v)
-	if err != nil {
-		return Task{}, err
-	}
-	return t, nil
 }

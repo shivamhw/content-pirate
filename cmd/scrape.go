@@ -39,7 +39,7 @@ func scrapeCmd() *cobra.Command {
 			for _, i := range ids {
 				j := scrapper.Job{
 					SrcAc:       i,
-					Dst:         dst,
+					Dst:         []store.DstPath{dst},
 					Opts:        scrapeOpts,
 					SourceStore: scrapper.REDDIT,
 				}
@@ -63,14 +63,11 @@ func scrapeCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&dst.BasePath, "dir", "./download", "dst folder for downloads")
-	cmd.Flags().StringVar(&dst.ImgPath, "img-dir", "imgs", "dst folder for imgs")
-	cmd.Flags().StringVar(&dst.VidPath, "vid-dir", "vids", "dst folder for vids")
 	cmd.Flags().StringVar(&sCfg.AuthCfg, "auth", "./reddit.json", "auth config for reddit")
 	cmd.Flags().StringVar(&scrapeOpts.Duration, "duration", "day", "duration")
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
 	cmd.Flags().StringSliceVar(&ids, "source", []string{}, "source channel ids")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipVideos, "skip-vid", true, "skip video download")
-	cmd.Flags().BoolVar(&dst.CombineDir, "combine", false, "combine folders")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipCollection, "skip-collection", false, "download full collection")
 	cmd.Flags().BoolVar(&dst.CleanOnStart, "cleanOnStart", false, "clean folders")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 10, "nof img proccesing worker")

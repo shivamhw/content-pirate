@@ -1,10 +1,7 @@
-package sources
+package commons
 
 import (
 	"context"
-
-	"github.com/shivamhw/content-pirate/commons"
-	"github.com/shivamhw/content-pirate/store"
 )
 
 type ItemStatus string
@@ -17,17 +14,16 @@ const (
 
 type Item struct {
 	Id       string
-	TaskId   string
 	Src      string
 	FileName string
-	Type     commons.MediaType
-	DstStore store.Store `json:"-"`
+	Type     MediaType
 	Dst      string
 	Status   ItemStatus
 	SourceAc string
 	Ext      string
 	Title    string
 	Ctx      context.Context `json:"-"`
+	Data     []byte   `json:"-"`
 }
 
 type ItemUpdateOpts struct {

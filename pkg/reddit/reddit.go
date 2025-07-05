@@ -85,7 +85,7 @@ func (r *RedditClient) GetPosts(subreddit string, opts ListOptions) ([]*Post, er
 	var err error
 	opts.sanitize()
 	nextToken := opts.NextPage
-	Logger.Info("scarpping reddit", "filter", opts.Filter, "limit", opts.Limit)
+	Logger.Info("scarpping reddit", "sub", subreddit, "filter", opts.Filter, "limit", opts.Limit)
 	for {
 		page := min(opts.Limit, 25)
 		opts.Limit -= page

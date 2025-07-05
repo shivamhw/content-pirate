@@ -51,7 +51,7 @@ func (r *RedditStore) ScrapePosts(_ context.Context, subreddit string, opts Scra
 	go func() {
 		defer func() {
 			close(p)
-			Logger.Info("scrapping post completed.", "scraped posts", cnt)
+			Logger.Info("scrapping post completed", "subreddit", subreddit, "scraped posts", cnt)
 		}()
 		posts := r.convertToPosts(rposts, subreddit, opts)
 		for _, post := range posts {
@@ -117,19 +117,19 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 	return
 }
 
-func (r *RedditStore) DownloadItem(ctx context.Context, i Item) ([]byte, error) {
+func (r *RedditStore) DownloadItem(ctx context.Context, i *commons.Item) (error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, i.Src, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to download %s because %s code", i.Src, err)
+		return fmt.Errorf("failed to download %s because %s code", i.Src, err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	i.Data, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error downloading job %s err %s", i.Src, err.Error())
+		return  fmt.Errorf("error downloading job %s err %s", i.Src, err.Error())
 	}
-	return data, nil
+	return nil
 }
