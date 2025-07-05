@@ -23,7 +23,6 @@ func Execute() {
 func init() {
 
 	rootCmd.AddCommand(helloCmd)
-	rootCmd.AddCommand(scrapeCmd())
 	rootCmd.AddCommand(reddit_cmd.RedditCmd())
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")

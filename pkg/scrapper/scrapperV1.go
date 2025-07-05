@@ -116,7 +116,6 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 	return
 }
 
-
 func (s *ScrapperV1) subWorker() {
 	t := time.NewTicker(5 * time.Second)
 	wg := sync.WaitGroup{}
