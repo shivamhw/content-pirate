@@ -14,7 +14,7 @@ import (
 var (
 	sCfg       scrapper.ScrapeCfg
 	scrapeOpts sources.ScrapeOpts
-	dst        store.DstPath
+	dst        store.FileDstPath
 	ids        []string
 )
 
@@ -69,7 +69,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&ids, "source", []string{}, "source channel ids")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipVideos, "skip-vid", true, "skip video download")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipCollection, "skip-collection", false, "download full collection")
-	cmd.Flags().BoolVar(&dst.CleanOnStart, "cleanOnStart", false, "clean folders")
+	cmd.Flags().BoolVar(&dst.Clean, "cleanOnStart", false, "clean folders")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 10, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.VidWorkers, "vid-worker", 5, "nof vid proccesing worker")
 	cmd.Flags().Int64Var(&sCfg.TimeOut, "time-out", 60, "timeout in seconds")

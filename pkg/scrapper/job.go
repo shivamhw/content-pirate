@@ -9,7 +9,7 @@ import (
 type Job struct {
 	SrcAc       string
 	SrcId       string
-	Dst         []store.DstPath
+	Dst         []store.DstPath	`json:"-"`
 	Opts        JobOpts
 }
 

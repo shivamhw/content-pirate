@@ -24,7 +24,7 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 	id = uuid.NewString()
 	//create task from job
 	for _, dst := range j.Dst {
-		store, err := store.GetStore(&dst)
+		store, err := store.GetStore(dst)
 		if err != nil {
 			return "", err
 		}

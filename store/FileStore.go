@@ -9,17 +9,28 @@ import (
 	. "github.com/shivamhw/content-pirate/pkg/log"
 )
 
-var DefaultPaths = map[string]string{
-	commons.IMG_TYPE: "imgs",
-	commons.VID_TYPE: "vids",
+type FileDstPath struct {
+	BasePath string
+	Clean    bool
 }
 
+func (f FileDstPath) GetBasePath() string {
+	return f.BasePath
+}
+
+func (f FileDstPath) CleanOnStart() bool {
+	return f.Clean
+}
+
+func (f FileDstPath) Type() DstPathType {
+	return FILE_DST_PATH
+}
 
 type FileStore struct {
-	Dst *DstPath
+	Dst *FileDstPath
 }
 
-func NewFileStore(path *DstPath) (*FileStore, error) {
+func NewFileStore(path *FileDstPath) (*FileStore, error) {
 	err := path.sanitize()
 	if err != nil {
 		return nil, err
@@ -48,7 +59,7 @@ func (f *FileStore) Write(i *commons.Item) (string, error) {
 	}
 	defer outfile.Close()
 	_, err = outfile.Write(i.Data)
-	return path,err
+	return path, err
 }
 
 func (f *FileStore) CreateDir(path string) (err error) {
@@ -65,17 +76,17 @@ func (f *FileStore) CleanAll(path string) error {
 	return err
 }
 
-func (d *DstPath) sanitize() (err error) {
+func (d *FileDstPath) sanitize() (err error) {
 	if d.BasePath == "" {
 		d.BasePath = "./download"
 	}
-	d.BasePath, err  = filepath.Abs(d.BasePath)
+	d.BasePath, err = filepath.Abs(d.BasePath)
 	Logger.Info("download path", "path", d.BasePath)
 	return err
 }
 
 func (f *FileStore) createStructure() (err error) {
-	if f.Dst.CleanOnStart {
+	if f.Dst.Clean {
 		err := f.CleanAll(f.Dst.BasePath)
 		if err != nil {
 			Logger.Warn("err while deleting dir structure ", "error", err)
@@ -86,7 +97,7 @@ func (f *FileStore) createStructure() (err error) {
 	return f.CreateDir(f.Dst.BasePath)
 }
 
-func (f *FileStore) ItemExists(i *commons.Item) (bool) {
+func (f *FileStore) ItemExists(i *commons.Item) bool {
 	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.Dst)
 	if _, err := os.Stat(path); err != nil {
 		return false

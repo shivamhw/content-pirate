@@ -1,11 +1,21 @@
 package store
 
-import "github.com/shivamhw/content-pirate/commons"
+import (
+	"fmt"
 
-type DstPath struct {
-	BasePath     string
-	CleanOnStart bool
-	Type 		 string
+	"github.com/shivamhw/content-pirate/commons"
+)
+
+type DstPathType string
+
+const (
+	FILE_DST_PATH DstPathType = "FILE_DST_PATH"
+)
+
+type DstPath interface {
+	GetBasePath() string
+	CleanOnStart() bool
+	Type() DstPathType
 }
 
 type Store interface {
@@ -16,11 +26,14 @@ type Store interface {
 	CleanAll(string) error
 }
 
-
-func GetStore(d *DstPath) (Store, error) {
-	if store, err := NewFileStore(d); err != nil {
-		return nil, err
-	} else {
-		return store, nil
+func GetStore(d DstPath) (Store, error) {
+	switch p := d.(type) {
+	case FileDstPath:
+		if store, err := NewFileStore(&p); err != nil {
+			return nil, err
+		} else {
+			return store, nil
+		}
 	}
+	return nil, fmt.Errorf("unknown dst store type")
 }
