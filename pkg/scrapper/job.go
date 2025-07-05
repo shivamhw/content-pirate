@@ -11,7 +11,6 @@ type Job struct {
 	SrcId       string
 	Dst         []store.DstPath
 	Opts        JobOpts
-	SourceType sources.SourceType
 }
 
 type JobOpts = sources.ScrapeOpts

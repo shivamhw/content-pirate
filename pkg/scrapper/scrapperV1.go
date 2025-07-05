@@ -39,6 +39,7 @@ type ScrapeCfg struct {
 	VidWorkers   int
 	TopicWorkers int
 	TimeOut      int64 //in seconds
+	SourceType   sources.SourceType
 }
 
 type Mediums struct {

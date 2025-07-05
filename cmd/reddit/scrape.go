@@ -31,6 +31,7 @@ func scrapeCmd() *cobra.Command {
 				return err
 			}
 			scrapeOpts.RedditFilter = f1
+			sCfg.SourceType = sources.SOURCE_TYPE_REDDIT
 			s, err := scrapper.NewScrapper(&sCfg)
 			if err != nil {
 				return err
@@ -38,10 +39,9 @@ func scrapeCmd() *cobra.Command {
 			go s.Start()
 			for _, i := range ids {
 				j := scrapper.Job{
-					SrcAc:      i,
-					Dst:        []store.DstPath{dst},
-					Opts:       scrapeOpts,
-					SourceType: sources.SOURCE_TYPE_REDDIT,
+					SrcAc:       i,
+					Dst:         []store.DstPath{dst},
+					Opts:        scrapeOpts,
 				}
 
 				id, err := s.SubmitJob(j)
@@ -77,6 +77,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&filter, "filter", "TOP", "filter: NEW, HOT, TOP")
 	return cmd
 }
+
 
 func sanitizeFilter(f *string) (reddit.PostFilter, error) {
 	filter := strings.ToUpper(fmt.Sprintf("REDDIT_%s", *f))
