@@ -3,6 +3,7 @@ package sources
 import (
 	"time"
 
+	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
@@ -15,12 +16,13 @@ const (
 )
 
 type Post struct {
-	MediaType string
+	MediaType commons.MediaType
 	SrcLink   string
 	Title     string
 	Id        string
 	SourceAc  string
 	Ext       string
+	FileName  string
 }
 
 type ScrapeOpts struct {
@@ -32,6 +34,5 @@ type ScrapeOpts struct {
 	NextPage       string
 	SkipCollection bool
 	SkipVideos     bool
-	Type           SourceType
 	RedditFilter   reddit.PostFilter
 }

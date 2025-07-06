@@ -13,7 +13,7 @@ import (
 	"github.com/iyear/tdl/pkg/tclient"
 )
 
-var DataDir = "/home/shivamhw/Code/reddit-pirate/Rdata/"
+var DataDir = "./teleData"
 var (
 	defaultBoltPath    = filepath.Join(DataDir, "data")
 	DefaultBoltStorage = map[string]string{

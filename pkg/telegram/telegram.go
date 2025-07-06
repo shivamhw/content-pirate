@@ -5,21 +5,27 @@ import (
 	"fmt"
 	log "log/slog"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
 	"github.com/iyear/tdl/core/logctx"
+	"github.com/iyear/tdl/core/storage"
+	"github.com/iyear/tdl/core/tmedia"
+	"github.com/iyear/tdl/core/util/tutil"
 	"github.com/iyear/tdl/pkg/tclient"
 )
 
 type Telegram struct {
-	ctx   context.Context
-	user  *UserData
-	c     *telegram.Client
-	close *bg.StopFunc
+	ctx     context.Context
+	user    *UserData
+	c       *telegram.Client
+	close   *bg.StopFunc
+	manager *peers.Manager
 }
 
 type UserData struct {
@@ -28,7 +34,6 @@ type UserData struct {
 }
 
 type Recipient struct {
-	AccessHash int64
 	UserId     int64
 }
 
@@ -48,11 +53,15 @@ func NewTelegram(ctx context.Context, user *UserData) (*Telegram, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	manager := peers.Options{Storage: storage.NewPeers(store.Kvd)}.Build(client.API())
+
 	return &Telegram{
-		ctx:   ctx,
-		user:  user,
-		c:     client,
-		close: &stop,
+		ctx:     ctx,
+		user:    user,
+		c:       client,
+		close:   &stop,
+		manager: manager,
 	}, nil
 }
 
@@ -144,35 +153,57 @@ func (t *Telegram) SearchUsers(q string) (result []*Dialog, err error) {
 
 }
 
-
-func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []*tg.Message, err error) {
-	peer := &tg.InputPeerUser{
-		UserID:     chat.UserId,
-		AccessHash: chat.AccessHash,
+func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []tg.Message, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", chat.UserId))
+	if err != nil {
+		return nil, err
 	}
-	opts.Peer = peer
+	opts.Peer = peer.InputPeer()
 	his, err := t.c.API().MessagesGetHistory(t.ctx, opts)
 	if err != nil {
 		return result, err
 	}
-	for _, m := range his.(*tg.MessagesMessagesSlice).Messages {
-		t, ok := m.(*tg.Message)
-		if !ok {
-			log.Error("cant convert to msg", "hist", "m")
-			return result, nil
+
+	switch v := his.(type) {
+	case *tg.MessagesMessages:
+		for _, msg := range v.Messages {
+			if m, ok := msg.(*tg.Message); ok {
+				result = append(result, *m)
+			}
 		}
-		result = append(result, t)
+
+	case *tg.MessagesMessagesSlice:
+		for _, msg := range v.Messages {
+			if m, ok := msg.(*tg.Message); ok {
+				result = append(result, *m)
+			}
+		}
+
+	case *tg.MessagesChannelMessages:
+		for _, msg := range v.Messages {
+			if m, ok := msg.(*tg.Message); ok {
+				result = append(result, *m)
+			}
+		}
+
+	case *tg.MessagesMessagesNotModified:
+		// No new messages, return empty result
+		return nil, nil
+
+	default:
+		panic(fmt.Sprintf("unexpected response type: %T", v))
 	}
+
 	return result, nil
 }
 
 func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.MessagesBotCallbackAnswer, err error) {
-	peer := &tg.InputPeerUser{
-		UserID:     chat.UserId,
-		AccessHash: chat.AccessHash,
+	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", chat.UserId))
+	if err != nil {
+		return nil, err
 	}
 	resp, err = t.c.API().MessagesGetBotCallbackAnswer(t.ctx, &tg.MessagesGetBotCallbackAnswerRequest{
-		Peer:  peer,
+		Peer:  peer.InputPeer(),
 		MsgID: msgId,
 		Data:  btnId,
 	})
@@ -186,12 +217,12 @@ func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.
 }
 
 func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err error) {
-	peer := &tg.InputPeerUser{
-		UserID:     to.UserId,
-		AccessHash: to.AccessHash,
+	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", to.UserId))
+	if err != nil {
+		return nil, err
 	}
 	res, err := t.c.API().MessagesSendMessage(t.ctx, &tg.MessagesSendMessageRequest{
-		Peer:     peer,
+		Peer:     peer.InputPeer(),
 		Message:  msg,
 		RandomID: rand.Int63(),
 	})
@@ -203,24 +234,43 @@ func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err err
 	return nMsg, err
 }
 
-
-func (t *Telegram) ForwardMsg(from *Recipient, to *Recipient, msgId int) (nMsg *tg.Message, err error) {
+func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Message, err error) {
+	fromPeer, err := tutil.GetInputPeer(t.ctx, t.manager, from)
+	if err != nil {
+		return nil, err
+	}
+	toPeer, err := tutil.GetInputPeer(t.ctx, t.manager, to)
+	if err != nil {
+		return nil, err
+	}
+	msgId, err := strconv.Atoi(msg)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := t.c.API().MessagesForwardMessages(t.ctx, &tg.MessagesForwardMessagesRequest{
-		FromPeer: &tg.InputPeerUser{
-			UserID:     from.UserId,
-			AccessHash: from.AccessHash,
-		},
-		ToPeer: &tg.InputPeerChannel{
-			ChannelID:  to.UserId,
-			AccessHash: to.AccessHash,
-		},
+		FromPeer: fromPeer.InputPeer(),
+		ToPeer: toPeer.InputPeer(),
 		ID:         []int{msgId},
 		RandomID:   []int64{rand.Int63()},
-		DropAuthor: true, // ✅ Hides "Forwarded from ..."
+		DropAuthor: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 	nMsg = extractSentMessage(resp)
 	return nMsg, nil
+}
+
+
+func GetFilenameFromMessage(msg *tg.Message) (string) {
+	media, ok := msg.GetMedia()
+	id := fmt.Sprintf("%d", msg.ID)
+	if !ok {
+		return id
+	}
+	mm, ok := tmedia.ExtractMedia(media)
+	if !ok {
+		return id
+	}
+	return mm.Name
 }

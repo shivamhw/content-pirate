@@ -51,21 +51,24 @@ func (f *FileStore) DirExists(path string) bool {
 }
 
 func (f *FileStore) Write(i *commons.Item) (string, error) {
-	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.Dst)
-	f.CreateDir(filepath.Dir(path))
-	outfile, err := os.Create(path)
+	fullFilePath := fmt.Sprintf("%s/%s", i.Dst, i.FileName)
+	f.CreateDir(filepath.Dir(fullFilePath))
+	outfile, err := os.Create(fullFilePath)
 	if err != nil {
-		return path, err
+		return "", err
 	}
 	defer outfile.Close()
 	_, err = outfile.Write(i.Data)
-	return path, err
+	return fullFilePath, err
 }
 
 func (f *FileStore) CreateDir(path string) (err error) {
 	return os.MkdirAll(path, 0755)
 }
 
+func (f *FileStore) ID() (string) {
+	return f.Dst.BasePath
+}
 func (f *FileStore) CleanAll(path string) error {
 	err := os.RemoveAll(path)
 	if err != nil {
@@ -98,9 +101,13 @@ func (f *FileStore) createStructure() (err error) {
 }
 
 func (f *FileStore) ItemExists(i *commons.Item) bool {
-	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.Dst)
+	path := fmt.Sprintf("%s/%s", f.Dst.BasePath, i.FileName)
 	if _, err := os.Stat(path); err != nil {
 		return false
 	}
 	return true
+}
+
+func (f *FileStore) GetItemDstPath(i *commons.Item) string {
+	return fmt.Sprintf("%s/%s", f.Dst.BasePath, i.SourceAc)
 }

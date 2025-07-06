@@ -78,6 +78,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 						Ext:       commons.GetMIME(post.MediaMetadata[item.MediaID].MIME),
 						SrcLink:   link,
 						SourceAc:  subreddit,
+						FileName: fmt.Sprintf("%d.%s", item.ID, commons.GetMIME(post.MediaMetadata[item.MediaID].MIME)),
 					}
 					posts = append(posts, post)
 					if opts.SkipCollection {

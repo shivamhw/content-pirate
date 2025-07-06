@@ -10,6 +10,7 @@ type MediaType = string
 const (
 	VID_TYPE MediaType = "vids"
 	IMG_TYPE MediaType = "imgs"
+    MSG_TYPE MediaType = "msg"
 )
 
 type Job struct {

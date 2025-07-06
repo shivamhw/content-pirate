@@ -4,6 +4,7 @@ import (
 	"os"
 
 	reddit_cmd "github.com/shivamhw/content-pirate/cmd/reddit"
+	telegram_cmd "github.com/shivamhw/content-pirate/cmd/telegram"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +25,7 @@ func init() {
 
 	rootCmd.AddCommand(helloCmd)
 	rootCmd.AddCommand(reddit_cmd.RedditCmd())
+	rootCmd.AddCommand(telegram_cmd.TelegramCmd())
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

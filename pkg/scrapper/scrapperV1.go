@@ -11,6 +11,7 @@ import (
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/kv"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
+	"github.com/shivamhw/content-pirate/pkg/telegram"
 	"github.com/shivamhw/content-pirate/sources"
 	"github.com/shivamhw/content-pirate/store"
 )
@@ -21,9 +22,10 @@ type ScrapperV1 struct {
 	ctx          context.Context
 	M            *Mediums
 	swg          sync.WaitGroup
-	kv           kv.KV
+	KV           kv.KV
 	l            *sync.Mutex
 	taskStoreIdx map[string][]store.Store
+	cache        *telegram.Store
 }
 
 type AuthCfg struct {
@@ -35,6 +37,7 @@ type AuthCfg struct {
 
 type ScrapeCfg struct {
 	AuthCfg      string
+	PhoneNumber  string
 	ImgWorkers   int
 	VidWorkers   int
 	TopicWorkers int
@@ -47,6 +50,7 @@ type Mediums struct {
 	ItemQ chan DownloadItemJob
 	imgq  chan DownloadItemJob
 	vidq  chan DownloadItemJob
+	msgq  chan DownloadItemJob
 }
 
 var (
@@ -56,6 +60,12 @@ var (
 
 func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 	err = cfg.sanitize()
+	ctx := context.Background()
+	if err != nil {
+		return nil, err
+	}
+	cache, err := telegram.GetOrCreateStore(ctx, "cache")
+
 	if err != nil {
 		return nil, err
 	}
@@ -66,21 +76,31 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 		ItemQ: make(chan DownloadItemJob),
 		imgq:  make(chan DownloadItemJob, 10),
 		vidq:  make(chan DownloadItemJob, 10),
+		msgq:  make(chan DownloadItemJob, 10),
 	}
 	scr = &ScrapperV1{
 		sCfg:         cfg,
-		ctx:          context.Background(),
+		ctx:          ctx,
 		M:            m,
-		kv:           kv.GetInMemoryKv(),
+		KV:           kv.GetInMemoryKv(),
 		l:            &sync.Mutex{},
 		taskStoreIdx: make(map[string][]store.Store),
+		cache:        cache,
 	}
-
-	scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
-		RedditClientOpts: reddit.RedditClientOpts{
-			CfgPath: cfg.AuthCfg,
-		},
-	})
+	switch cfg.SourceType {
+	case sources.SOURCE_TYPE_REDDIT:
+		scr.SourceStore, err = sources.NewRedditStore(scr.ctx, &sources.RedditStoreOpts{
+			RedditClientOpts: reddit.RedditClientOpts{
+				CfgPath: cfg.AuthCfg,
+			},
+		})
+	case sources.SOURCE_TYPE_TELEGRAM:
+		scr.SourceStore, err = sources.NewTelegramSource(scr.ctx, &sources.TelegramSourceOtps{
+			PhoneNumber: cfg.PhoneNumber,
+		})
+	default:
+		return nil, fmt.Errorf("unknown source store %s", cfg.SourceType)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -96,22 +116,29 @@ func (s *ScrapperV1) process(i *DownloadItemJob) {
 		return
 	}
 
-	//save to dir
-	log.Debug("saving file to filesystem", "dst", i.I.Dst)
-
-	if err:= s.saveItem(i); err != nil {
+	if err := s.saveItem(i); err != nil {
 		log.Error("error saving", "item", i.I.FileName, "err", err)
 	}
 	atomic.AddInt64(&imgCounter, 1)
 }
 
 func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
-	for _, s := range i.stores {
-		if dst, err := s.Write(i.I); err != nil {
+
+	for _, st := range i.stores {
+		dst := st.GetItemDstPath(i.I)
+		//save to dir
+		log.Debug("saving file to filesystem", "dst", dst)
+		i.I.Dst = dst
+		key := fmt.Sprintf("%s_%s", st.ID(), i.I.FileName)
+		if _, err := s.cache.Kvd.Get(s.ctx, key); err == nil {
+			log.Warn("cache hit, file found in store", "file", i.I.FileName, "store", st.ID())
+			continue
+		}
+		if dst, err := st.Write(i.I); err != nil {
 			return err
 		} else {
-
 			i.I.Dst = dst
+			s.cache.Kvd.Set(s.ctx, key, []byte{})
 		}
 	}
 	return
@@ -137,8 +164,6 @@ LOOP:
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
 				for post := range p {
-					fileName := fmt.Sprintf("%s.%s", post.Id, post.Ext)
-					dst := fmt.Sprintf("%s/%s.%s",v.J.SrcAc, post.Id, post.Ext)
 					ctx := s.ctx
 
 					if s.sCfg.TimeOut > 0 {
@@ -148,8 +173,7 @@ LOOP:
 						Id:       post.Id,
 						Src:      post.SrcLink,
 						Title:    post.Title,
-						FileName: fileName,
-						Dst:      dst,
+						FileName: post.FileName,
 						Type:     post.MediaType,
 						Ext:      post.Ext,
 						SourceAc: post.SourceAc,
@@ -174,16 +198,14 @@ LOOP:
 						continue
 					}
 					s.M.ItemQ <- DownloadItemJob{
-						I: &item,
-						T: v,
+						I:      &item,
+						T:      v,
 						stores: stores,
 					}
 				}
 			}(&wg)
 		case <-t.C:
-			{
-				log.Info("scrapper heartbeat......")
-			}
+			log.Debug("scrapper heartbeat......")
 		}
 	}
 	log.Warn("topic closed, waiting for routines to feed posts")
@@ -200,7 +222,7 @@ func (s *ScrapperV1) filterStores(t *Task, i *commons.Item) (fStores []store.Sto
 		}
 		fStores = append(fStores, st)
 	}
-	return 
+	return
 }
 
 func (s *ScrapperV1) queueWorker(id int, q chan DownloadItemJob) {
@@ -227,6 +249,11 @@ func (s *ScrapperV1) startWorkers() {
 		s.swg.Add(1)
 		go s.queueWorker(i, s.M.vidq)
 	}
+
+	for i := range s.sCfg.ImgWorkers {
+		s.swg.Add(1)
+		go s.queueWorker(i, s.M.msgq)
+	}
 }
 
 func (s *ScrapperV1) Start() {
@@ -243,12 +270,13 @@ LOOP:
 				close(s.M.vidq)
 				break LOOP
 			}
-			if v.I.Type == commons.VID_TYPE {
+			switch v.I.Type {
+			case commons.VID_TYPE:
 				s.M.vidq <- v
-			}
-
-			if v.I.Type == commons.IMG_TYPE {
+			case commons.IMG_TYPE:
 				s.M.imgq <- v
+			case commons.MSG_TYPE:
+				s.M.msgq <- v
 			}
 		}
 	}

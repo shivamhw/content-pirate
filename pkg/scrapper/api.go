@@ -8,14 +8,15 @@ import (
 	log "log/slog"
 
 	"github.com/shivamhw/content-pirate/commons"
+	"github.com/shivamhw/content-pirate/sources"
 	"github.com/shivamhw/content-pirate/store"
 
 	"github.com/google/uuid"
 )
 
 type DownloadItemJob struct {
-	I *commons.Item
-	T *Task
+	I      *commons.Item
+	T      *Task
 	stores []store.Store
 }
 
@@ -24,11 +25,16 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 	id = uuid.NewString()
 	//create task from job
 	for _, dst := range j.Dst {
-		store, err := store.GetStore(dst)
+		st, err := store.GetStore(dst)
 		if err != nil {
 			return "", err
 		}
-		stores = append(stores, store)
+		//TODO fix this one on priority
+		if s.sCfg.SourceType == sources.SOURCE_TYPE_TELEGRAM {
+			log.Warn("using override to add tele client in store")
+			st.(*store.TelegramStore).C = s.SourceStore.(*sources.TelegramSource).GetClient()
+		}
+		stores = append(stores, st)
 	}
 	t := Task{
 		Id: id,
@@ -44,7 +50,7 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 	//put task to queue
 	log.Info("submitting task ", "task", t)
 	data, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, data)
+	err = s.KV.Set("task", id, data)
 	if err != nil {
 		return "", err
 	}
@@ -55,7 +61,7 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 
 func (s *ScrapperV1) GetJob(id string) (Task, error) {
 	var t Task
-	data, err := s.kv.Get("task", id)
+	data, err := s.KV.Get("task", id)
 	if err != nil {
 		return Task{}, err
 	}
@@ -102,7 +108,7 @@ func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
 	defer s.l.Unlock()
 	s.l.Lock()
 	var t Task
-	data, err := s.kv.Get("task", id)
+	data, err := s.KV.Get("task", id)
 	if err != nil {
 		return Task{}, err
 	}
@@ -119,7 +125,7 @@ func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
 	}
 	// hack alert
 	v, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, v)
+	err = s.KV.Set("task", id, v)
 	if err != nil {
 		return Task{}, err
 	}
@@ -130,7 +136,7 @@ func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error
 	defer s.l.Unlock()
 	s.l.Lock()
 	var t Task
-	data, err := s.kv.Get("task", id)
+	data, err := s.KV.Get("task", id)
 	if err != nil {
 		return Task{}, err
 	}
@@ -141,7 +147,7 @@ func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error
 	t.Status.ItemDone = opts.ItemDone
 	// hack alert
 	v, _ := json.Marshal(t)
-	err = s.kv.Set("task", id, v)
+	err = s.KV.Set("task", id, v)
 	if err != nil {
 		return Task{}, err
 	}
