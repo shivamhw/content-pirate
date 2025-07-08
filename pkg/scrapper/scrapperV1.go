@@ -3,10 +3,12 @@ package scrapper
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/kv"
 	"github.com/shivamhw/content-pirate/pkg/log"
@@ -26,6 +28,7 @@ type ScrapperV1 struct {
 	l            *sync.Mutex
 	taskStoreIdx map[string][]store.Store
 	cache        *telegram.Store
+	Id           string
 }
 
 type AuthCfg struct {
@@ -54,8 +57,9 @@ type Mediums struct {
 }
 
 var (
-	imgCounter int64
-	vidCounter int64
+	imgCounter    int64
+	vidCounter    int64
+	masterCounter int64
 )
 
 func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
@@ -86,6 +90,7 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 		l:            &sync.Mutex{},
 		taskStoreIdx: make(map[string][]store.Store),
 		cache:        cache,
+		Id:           strings.Split(uuid.New().String(), "-")[0],
 	}
 	switch cfg.SourceType {
 	case sources.SOURCE_TYPE_REDDIT:
@@ -134,6 +139,7 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 			log.Warnf("cache hit, file found in store", "file", i.I.FileName, "store", st.ID())
 			continue
 		}
+		atomic.AddInt64(&masterCounter, 1)
 		if dst, err := st.Write(i.I); err != nil {
 			return err
 		} else {
@@ -145,7 +151,6 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 }
 
 func (s *ScrapperV1) subWorker() {
-	t := time.NewTicker(5 * time.Second)
 	wg := sync.WaitGroup{}
 LOOP:
 	for {
@@ -204,8 +209,6 @@ LOOP:
 					}
 				}
 			}(&wg)
-		case <-t.C:
-			log.Debugf("scrapper heartbeat......")
 		}
 	}
 	log.Warnf("topic closed, waiting for routines to feed posts")
@@ -259,8 +262,8 @@ func (s *ScrapperV1) startWorkers() {
 func (s *ScrapperV1) Start() {
 	//reset counters
 	imgCounter, vidCounter = 0, 0
-
 	go s.startWorkers()
+	t := time.NewTicker(5 * time.Second)
 LOOP:
 	for {
 		select {
@@ -278,6 +281,9 @@ LOOP:
 			case commons.MSG_TYPE:
 				s.M.msgq <- v
 			}
+		case <-t.C:
+			log.Debugf("scrapper heartbeat......")
+			log.Infof("total saved items", "posts", masterCounter)
 		}
 	}
 	s.swg.Wait()

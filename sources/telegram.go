@@ -91,7 +91,7 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 }
 
 func (t *TelegramSource) DownloadItem(ctx context.Context, i *commons.Item) (err error) {
-	log.Infof("downloading", "item", i.Id)
+	log.Debugf("downloading", "item", i.Id)
 	return
 }
 

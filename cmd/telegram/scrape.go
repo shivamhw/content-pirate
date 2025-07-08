@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/scrapper"
 	"github.com/shivamhw/content-pirate/sources"
 	"github.com/shivamhw/content-pirate/store"
@@ -32,6 +33,7 @@ func scrapeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			log.SetId(s.Id)
 			go s.Start()
 			scrapeOpts.LastFrom = time.Now().Add(time.Duration(-timeDelta) * time.Minute)
 			dst.PhoneNumber = sCfg.PhoneNumber

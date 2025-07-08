@@ -70,7 +70,7 @@ func (t *Telegram) heartBeat() error {
 	for {
 		select {
 		case <-ti.C:
-			log.Infof("telegram heartbeat")
+			log.Debugf("telegram heartbeat")
 			if err := t.c.Ping(t.ctx); err != nil {
 				log.Warnf("telegram reconncting")
 				c, err := GetClientWithStore(t.ctx, t.store)
