@@ -2,7 +2,7 @@ package kv
 
 import (
 	"fmt"
-	"log/slog"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"sync"
 )
 
@@ -27,7 +27,7 @@ func (i *InMemDb) Get(ns string, key string) ([]byte, error) {
 	var ok bool
 	if b, ok = i.db[ns]; !ok {
 		// return nil, fmt.Errorf("namespace not found %s", ns)
-		slog.Warn("ns not found creating one, ", "ns", ns)
+		log.Warnf("ns not found creating one, ", "ns", ns)
 		i.db[ns] = make(bkt)
 		b = i.db[ns]
 	}
@@ -44,7 +44,7 @@ func (i *InMemDb) Set(ns string, key string, val []byte) (error) {
 	var b bkt
 	var ok bool
 	if b, ok = i.db[ns]; !ok {
-		slog.Warn("ns not found creating one, ", "ns", ns)
+		log.Warnf("ns not found creating one, ", "ns", ns)
 		i.db[ns] = make(bkt)
 		b = i.db[ns]
 	}

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/shivamhw/content-pirate/commons"
-	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
@@ -46,12 +46,12 @@ func (r *RedditStore) ScrapePosts(_ context.Context, subreddit string, opts Scra
 	}
 	rposts, err := r.client.GetPosts(subreddit, rOpts)
 	if err != nil {
-		Logger.Error("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
+		log.Errorf("scrapping subreddit failed ", "subreddit", subreddit, "error", err)
 	}
 	go func() {
 		defer func() {
 			close(p)
-			Logger.Info("scrapping post completed", "subreddit", subreddit, "scraped posts", cnt)
+			log.Infof("scrapping post completed", "subreddit", subreddit, "scraped posts", cnt)
 		}()
 		posts := r.convertToPosts(rposts, subreddit, opts)
 		for _, post := range posts {
@@ -66,10 +66,10 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 	for _, post := range rposts {
 		// if gallary link
 		if strings.Contains(post.URL, "/gallery/") {
-			Logger.Debug("found gallery", "url", post.URL)
+			log.Debugf("found gallery", "url", post.URL)
 			for _, item := range post.GalleryData.Items {
 				link := fmt.Sprintf("https://i.redd.it/%s.%s", item.MediaID, commons.GetMIME(post.MediaMetadata[item.MediaID].MIME))
-				Logger.Debug("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
+				log.Debugf("created", "link", link, "post title", post.Title, "mediaId", item.MediaID)
 				if commons.IsImgLink(link) {
 					post := Post{
 						Id:        fmt.Sprintf("%d", item.ID),
@@ -82,7 +82,7 @@ func (r *RedditStore) convertToPosts(rposts []*reddit.Post, subreddit string, op
 					}
 					posts = append(posts, post)
 					if opts.SkipCollection {
-						Logger.Info("not downloading full collection")
+						log.Infof("not downloading full collection")
 						break
 					}
 				}

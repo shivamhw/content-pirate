@@ -3,13 +3,13 @@ package scrapper
 import (
 	"context"
 	"fmt"
-	log "log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/kv"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
 	"github.com/shivamhw/content-pirate/sources"
@@ -112,12 +112,12 @@ func (s *ScrapperV1) process(i *DownloadItemJob) {
 	defer s.increment(i.T.Id)
 	err := s.SourceStore.DownloadItem(i.I.Ctx, i.I)
 	if err != nil {
-		log.Warn("failed while downloading", "name", i.I.FileName, "error", err)
+		log.Warnf("failed while downloading", "name", i.I.FileName, "error", err)
 		return
 	}
 
 	if err := s.saveItem(i); err != nil {
-		log.Error("error saving", "item", i.I.FileName, "err", err)
+		log.Errorf("error saving", "item", i.I.FileName, "err", err)
 	}
 	atomic.AddInt64(&imgCounter, 1)
 }
@@ -127,18 +127,18 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 	for _, st := range i.stores {
 		dst := st.GetItemDstPath(i.I)
 		//save to dir
-		log.Debug("saving file to filesystem", "dst", dst)
+		log.Debugf("saving file to filesystem", "dst", dst)
 		i.I.Dst = dst
 		key := fmt.Sprintf("%s_%s", st.ID(), i.I.FileName)
 		if _, err := s.cache.Kvd.Get(s.ctx, key); err == nil {
-			log.Warn("cache hit, file found in store", "file", i.I.FileName, "store", st.ID())
+			log.Warnf("cache hit, file found in store", "file", i.I.FileName, "store", st.ID())
 			continue
 		}
 		if dst, err := st.Write(i.I); err != nil {
 			return err
 		} else {
 			i.I.Dst = dst
-			s.cache.Kvd.Set(s.ctx, key, []byte{})
+			s.cache.Kvd.Set(s.ctx, key, []byte(i.I.Id))
 		}
 	}
 	return
@@ -154,10 +154,10 @@ LOOP:
 			if !ok {
 				break LOOP
 			}
-			log.Debug("Scrapping", "src", v)
+			log.Debugf("Scrapping", "src", v)
 			p, err := s.SourceStore.ScrapePosts(s.ctx, v.J.SrcAc, sources.ScrapeOpts(v.J.Opts))
 			if err != nil {
-				log.Error("Error while scraping", "source", v)
+				log.Errorf("Error while scraping", "source", v)
 				continue
 			}
 			wg.Add(1)
@@ -181,7 +181,7 @@ LOOP:
 					}
 					v.I = append(v.I, item)
 					v.Status.TotalItem = int64(len(v.I))
-					log.Debug("updating total item", "task", v.Id, "items", v.Status.TotalItem)
+					log.Debugf("updating total item", "task", v.Id, "items", v.Status.TotalItem)
 					v.Status.Status = TaskStarted
 					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
 						TaskStatus: &v.Status,
@@ -189,11 +189,11 @@ LOOP:
 					})
 					v.Status = nTask.Status
 					if err != nil {
-						log.Error("updating status of task failed", "id", v.Id)
+						log.Errorf("updating status of task failed", "id", v.Id)
 					}
 					stores := s.filterStores(v, &item)
 					if len(stores) <= 0 {
-						log.Warn("file exists in all stores not adding it to queue", "file", item.Dst)
+						log.Warnf("file exists in all stores not adding it to queue", "file", item.Dst)
 						s.increment(v.Id)
 						continue
 					}
@@ -205,19 +205,19 @@ LOOP:
 				}
 			}(&wg)
 		case <-t.C:
-			log.Debug("scrapper heartbeat......")
+			log.Debugf("scrapper heartbeat......")
 		}
 	}
-	log.Warn("topic closed, waiting for routines to feed posts")
+	log.Warnf("topic closed, waiting for routines to feed posts")
 	wg.Wait()
 	s.M.closeAll()
-	log.Warn("stopped recieving topics to scrape... exiting")
+	log.Warnf("stopped recieving topics to scrape... exiting")
 }
 
 func (s *ScrapperV1) filterStores(t *Task, i *commons.Item) (fStores []store.Store) {
 	for _, st := range s.taskStoreIdx[t.Id] {
 		if st.ItemExists(i) {
-			log.Warn("file already exist", "file", i.FileName)
+			log.Warnf("file already exist", "file", i.FileName)
 			continue
 		}
 		fStores = append(fStores, st)
@@ -229,7 +229,7 @@ func (s *ScrapperV1) queueWorker(id int, q chan DownloadItemJob) {
 	defer s.swg.Done()
 	fmt.Println("starting img woker ", id)
 	for j := range q {
-		log.Debug("processing", "title", j.I.Title)
+		log.Debugf("processing", "title", j.I.Title)
 		s.process(&j)
 	}
 	fmt.Println("Exited worker ", id)
@@ -281,8 +281,8 @@ LOOP:
 		}
 	}
 	s.swg.Wait()
-	log.Info("Summary", "Processed Imgs :", imgCounter)
-	log.Info("Summary", "Processed vids :", vidCounter)
+	log.Infof("Summary", "Processed Imgs :", imgCounter)
+	log.Infof("Summary", "Processed vids :", vidCounter)
 }
 
 func (cfg *ScrapeCfg) sanitize() error {
@@ -304,5 +304,5 @@ func (m *Mediums) closeAll() {
 }
 
 func (s *ScrapperV1) Stop() {
-	log.Warn("Stopping scrapper")
+	log.Warnf("Stopping scrapper")
 }

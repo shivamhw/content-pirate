@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/shivamhw/content-pirate/commons"
-	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
 )
 
@@ -30,7 +30,7 @@ func NewTelegramSource(ctx context.Context, cfg *TelegramSourceOtps) (*TelegramS
 	if ok, _ := t.WhoAmI(); !ok.Authorized {
 		return nil, fmt.Errorf("user not logged in %s", user.PhoneNumber)
 	} else {
-		Logger.Info("user logged in ", "user", user.PhoneNumber)
+		log.Infof("user logged in ", "user", user.PhoneNumber)
 	}
 	return &TelegramSource{
 		c:   t,
@@ -45,7 +45,7 @@ func (t *TelegramSource) ScrapePosts(ctx context.Context, chat string, opts Scra
 	if err != nil {
 		return nil, err
 	}
-	Logger.Info("scrapping telegram ", "id", chatId)
+	log.Infof("scrapping telegram ", "id", chatId)
 	chatAc := &telegram.Recipient{
 		UserId:     chatId,
 	}
@@ -69,13 +69,13 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 		Limit: opts.Limit,
 	})
 	if err != nil {
-		Logger.Error(err.Error())
+		log.Errorf(err.Error())
 		return nil, err
 	}
-	Logger.Info("scrapped", "unfiltered msgs", len(msgs))
+	log.Infof("scrapped", "unfiltered msgs", len(msgs))
 	for _, m := range msgs {
 		if m.Date > int(opts.LastFrom.Unix()) {
-			Logger.Debug("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
+			log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
 			t := Post{
 				MediaType: commons.MSG_TYPE,
 				Id:        fmt.Sprintf("%d", m.ID),
@@ -86,12 +86,12 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 			p = append(p, t)
 		}
 	}
-	Logger.Info("scrapped", "filtered posts", len(p))
+	log.Infof("scrapped", "filtered posts", len(p))
 	return
 }
 
 func (t *TelegramSource) DownloadItem(ctx context.Context, i *commons.Item) (err error) {
-	Logger.Info("downloading", "item", i.Id)
+	log.Infof("downloading", "item", i.Id)
 	return
 }
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/shivamhw/content-pirate/commons"
-	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 )
 
 type FileDstPath struct {
@@ -72,9 +72,9 @@ func (f *FileStore) ID() (string) {
 func (f *FileStore) CleanAll(path string) error {
 	err := os.RemoveAll(path)
 	if err != nil {
-		Logger.Error("err while deleting dir structure", "err", err)
+		log.Errorf("err while deleting dir structure", "err", err)
 	} else {
-		Logger.Info("cleanup success")
+		log.Infof("cleanup success")
 	}
 	return err
 }
@@ -84,7 +84,7 @@ func (d *FileDstPath) sanitize() (err error) {
 		d.BasePath = "./download"
 	}
 	d.BasePath, err = filepath.Abs(d.BasePath)
-	Logger.Info("download path", "path", d.BasePath)
+	log.Infof("download path", "path", d.BasePath)
 	return err
 }
 
@@ -92,9 +92,9 @@ func (f *FileStore) createStructure() (err error) {
 	if f.Dst.Clean {
 		err := f.CleanAll(f.Dst.BasePath)
 		if err != nil {
-			Logger.Warn("err while deleting dir structure ", "error", err)
+			log.Warnf("err while deleting dir structure ", "error", err)
 		} else {
-			Logger.Info("cleanup success")
+			log.Infof("cleanup success")
 		}
 	}
 	return f.CreateDir(f.Dst.BasePath)

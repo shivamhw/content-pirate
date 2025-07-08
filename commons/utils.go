@@ -3,7 +3,7 @@ package commons
 import (
 	"encoding/json"
 	"io"
-	"log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"os"
 	"strings"
 )

@@ -3,11 +3,11 @@ package telegram
 import (
 	"context"
 	"fmt"
-	log "log/slog"
 	"math/rand"
 	"strconv"
 	"time"
 
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
@@ -24,8 +24,9 @@ type Telegram struct {
 	ctx     context.Context
 	user    *UserData
 	c       *telegram.Client
-	close   *bg.StopFunc
+	close   bg.StopFunc
 	manager *peers.Manager
+	store   *Store
 }
 
 type UserData struct {
@@ -34,7 +35,7 @@ type UserData struct {
 }
 
 type Recipient struct {
-	UserId     int64
+	UserId int64
 }
 
 type SearchOpts = tg.MessagesGetHistoryRequest
@@ -49,20 +50,40 @@ func NewTelegram(ctx context.Context, user *UserData) (*Telegram, error) {
 	if err != nil {
 		return nil, err
 	}
-	stop, err := bg.Connect(client)
-	if err != nil {
-		return nil, err
-	}
 
 	manager := peers.Options{Storage: storage.NewPeers(store.Kvd)}.Build(client.API())
-
-	return &Telegram{
-		ctx:     ctx,
-		user:    user,
-		c:       client,
-		close:   &stop,
+	t := &Telegram{
+		ctx:  ctx,
+		user: user,
+		c:    client,
+		store: store,
 		manager: manager,
-	}, nil
+	}
+
+	go t.heartBeat()
+
+	return t, nil
+}
+
+func (t *Telegram) heartBeat() error {
+	ti := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ti.C:
+			log.Infof("telegram heartbeat")
+			if err := t.c.Ping(t.ctx); err != nil {
+				log.Warnf("telegram reconncting")
+				c, err := GetClientWithStore(t.ctx, t.store)
+				if err != nil {
+					log.Errorf("reconnect failed with telegram")
+					panic(err)
+				}
+				t.c = c
+				log.Infof("reconnect successfull")
+			}
+
+		}
+	}
 }
 
 func (t *Telegram) WhoAmI() (status *auth.Status, err error) {
@@ -82,6 +103,11 @@ func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, er
 	if err != nil {
 		return nil, err
 	}
+
+	_, err = bg.Connect(c)
+	if err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -91,7 +117,7 @@ func (t *Telegram) ListChats() (result []*Dialog, err error) {
 		return result, err
 	}
 	for _, r := range result {
-		log.Info(r.VisibleName)
+		log.Infof(r.VisibleName)
 	}
 	return result, nil
 }
@@ -208,11 +234,11 @@ func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.
 		Data:  btnId,
 	})
 	if err != nil {
-		log.Error("click failed: %s", err.Error())
+		log.Errorf("click failed: %s", err.Error())
 		return nil, err
 	}
 
-	log.Info("Callback response:", resp)
+	log.Debugf("Callback response:", resp)
 	return resp, nil
 }
 
@@ -227,7 +253,7 @@ func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err err
 		RandomID: rand.Int63(),
 	})
 	if err != nil {
-		log.Error("err", "e", err)
+		log.Errorf("err", "e", err)
 		return nil, err
 	}
 	nMsg = extractSentMessage(res)
@@ -248,8 +274,8 @@ func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Mess
 		return nil, err
 	}
 	resp, err := t.c.API().MessagesForwardMessages(t.ctx, &tg.MessagesForwardMessagesRequest{
-		FromPeer: fromPeer.InputPeer(),
-		ToPeer: toPeer.InputPeer(),
+		FromPeer:   fromPeer.InputPeer(),
+		ToPeer:     toPeer.InputPeer(),
 		ID:         []int{msgId},
 		RandomID:   []int64{rand.Int63()},
 		DropAuthor: true,
@@ -261,8 +287,7 @@ func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Mess
 	return nMsg, nil
 }
 
-
-func GetFilenameFromMessage(msg *tg.Message) (string) {
+func GetFilenameFromMessage(msg *tg.Message) string {
 	media, ok := msg.GetMedia()
 	id := fmt.Sprintf("%d", msg.ID)
 	if !ok {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/shivamhw/content-pirate/commons"
-	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/vartanbeno/go-reddit/v2/reddit"
 )
 
@@ -55,11 +55,11 @@ func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient,
 	}
 	err := commons.ReadFromJson(opts.CfgPath, redditClient.aCfg)
 	if os.IsNotExist(err) {
-		Logger.Warn("file does not exists", "file", opts.CfgPath)
+		log.Warnf("file does not exists", "file", opts.CfgPath)
 		opts.CfgPath = ""
 	}
 	if opts.CfgPath == "" {
-		Logger.Warn("no reddit config passed using default client")
+		log.Warnf("no reddit config passed using default client")
 		return redditClient, nil
 	}
 	// create auth
@@ -71,7 +71,7 @@ func NewRedditClient(ctx context.Context, opts RedditClientOpts) (*RedditClient,
 	}
 	c, err := reddit.NewClient(credentials)
 	if err != nil {
-		Logger.Error("err creating client, using default client", "error", err)
+		log.Errorf("err creating client, using default client", "error", err)
 		return redditClient, err
 	}
 	redditClient.Client = c
@@ -85,7 +85,7 @@ func (r *RedditClient) GetPosts(subreddit string, opts ListOptions) ([]*Post, er
 	var err error
 	opts.sanitize()
 	nextToken := opts.NextPage
-	Logger.Info("scarpping reddit", "sub", subreddit, "filter", opts.Filter, "limit", opts.Limit)
+	log.Infof("scarpping reddit", "sub", subreddit, "filter", opts.Filter, "limit", opts.Limit)
 	for {
 		page := min(opts.Limit, 25)
 		opts.Limit -= page
@@ -113,7 +113,7 @@ func (r *RedditClient) GetPosts(subreddit string, opts ListOptions) ([]*Post, er
 
 		if err != nil {
 			if strings.Contains(err.Error(), "429") {
-				Logger.Warn("HIT rate limit wait 2 sec")
+				log.Warnf("HIT rate limit wait 2 sec")
 				time.Sleep(2 * time.Second)
 				continue
 			} else {
@@ -144,7 +144,7 @@ func (r *RedditClient) GetSubscribedSubreddits(limit int) ([]*reddit.Subreddit, 
 			},
 		})
 		if err != nil {
-			Logger.Error("failed getting subcribed subreddit list", "err", err)
+			log.Errorf("failed getting subcribed subreddit list", "err", err)
 		}
 		nextToken = resp.After
 		results = append(results, subs...)
@@ -169,7 +169,7 @@ func (r *RedditClient) SearchSubreddits(q string, limit int) ([]*reddit.Subreddi
 			},
 		})
 		if err != nil {
-			Logger.Error("failed getting search subreddit list", "err", err)
+			log.Errorf("failed getting search subreddit list", "err", err)
 		}
 		nextToken = resp.After
 		results = append(results, subs...)

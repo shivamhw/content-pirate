@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shivamhw/content-pirate/commons"
-	. "github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
 )
 
@@ -49,7 +49,7 @@ func (s *TelegramStore) Write(i *commons.Item) (path string, err error) {
 	if err != nil {
 		return "", err
 	}
-	Logger.Info("forwarded msg", "from", i.SourceAc, "to", i.Dst, "msg", i.FileName)
+	log.Infof("forwarded msg", "from", i.SourceAc, "to", i.Dst, "msg", i.FileName)
 	return i.Dst, err
 }
 
