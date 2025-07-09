@@ -162,7 +162,7 @@ LOOP:
 			log.Debugf("Scrapping", "src", v)
 			p, err := s.SourceStore.ScrapePosts(s.ctx, v.J.SrcAc, sources.ScrapeOpts(v.J.Opts))
 			if err != nil {
-				log.Errorf("Error while scraping", "source", v)
+				log.Errorf("Error while scraping", "source", v, "err", err.Error())
 				continue
 			}
 			wg.Add(1)
@@ -264,6 +264,7 @@ func (s *ScrapperV1) Start() {
 	imgCounter, vidCounter = 0, 0
 	go s.startWorkers()
 	t := time.NewTicker(5 * time.Second)
+	start := time.Now()
 LOOP:
 	for {
 		select {
@@ -283,7 +284,7 @@ LOOP:
 			}
 		case <-t.C:
 			log.Debugf("scrapper heartbeat......")
-			log.Infof("total saved items", "posts", masterCounter)
+			log.Infof("total saved items", "posts", masterCounter, "time", fmt.Sprintf("%.f",time.Since(start).Minutes()))
 		}
 	}
 	s.swg.Wait()

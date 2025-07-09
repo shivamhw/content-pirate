@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
@@ -18,13 +17,14 @@ import (
 	"github.com/iyear/tdl/core/tmedia"
 	"github.com/iyear/tdl/core/util/tutil"
 	"github.com/iyear/tdl/pkg/tclient"
+	"github.com/shivamhw/content-pirate/pkg/log"
 )
 
 type Telegram struct {
 	ctx     context.Context
 	user    *UserData
 	c       *telegram.Client
-	close   bg.StopFunc
+	close   *bg.StopFunc
 	manager *peers.Manager
 	store   *Store
 }
@@ -46,18 +46,19 @@ func NewTelegram(ctx context.Context, user *UserData) (*Telegram, error) {
 		return nil, err
 	}
 	user.Store = store
-	client, err := GetClientWithStore(ctx, store)
+	client, stop, err := GetClientWithStore(ctx, store)
 	if err != nil {
 		return nil, err
 	}
 
 	manager := peers.Options{Storage: storage.NewPeers(store.Kvd)}.Build(client.API())
 	t := &Telegram{
-		ctx:  ctx,
-		user: user,
-		c:    client,
-		store: store,
+		ctx:     ctx,
+		user:    user,
+		c:       client,
+		store:   store,
 		manager: manager,
+		close:   stop,
 	}
 
 	go t.heartBeat()
@@ -70,45 +71,48 @@ func (t *Telegram) heartBeat() error {
 	for {
 		select {
 		case <-ti.C:
-			log.Debugf("telegram heartbeat")
+			log.Infof("telegram heartbeat")
 			if err := t.c.Ping(t.ctx); err != nil {
 				log.Warnf("telegram reconncting")
-				c, err := GetClientWithStore(t.ctx, t.store)
+				c, stop, err := GetClientWithStore(t.ctx, t.store)
 				if err != nil {
 					log.Errorf("reconnect failed with telegram")
 					panic(err)
 				}
+				(*t.close)()
 				t.c = c
+				t.close = stop
+				t.manager = peers.Options{Storage: storage.NewPeers(t.store.Kvd)}.Build(c.API())
 				log.Infof("reconnect successfull")
 			}
-
 		}
 	}
 }
 
 func (t *Telegram) WhoAmI() (status *auth.Status, err error) {
 	status, err = t.c.Auth().Status(t.ctx)
+	log.Warnf("err:", "msg", err)
 	if err != nil {
 		return nil, err
 	}
 	return status, err
 }
 
-func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, error) {
+func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, *bg.StopFunc, error) {
 	c, err := tclient.New(ctx, tclient.Options{
 		KV:               store.Kvd,
 		UpdateHandler:    nil,
-		ReconnectTimeout: 1 * time.Minute,
+		ReconnectTimeout: 5 * time.Second,
 	}, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	_, err = bg.Connect(c)
+	stop, err := bg.Connect(c)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return c, nil
+	return c, &stop, nil
 }
 
 func (t *Telegram) ListChats() (result []*Dialog, err error) {
