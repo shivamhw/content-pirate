@@ -71,20 +71,26 @@ func (t *Telegram) heartBeat() error {
 	for {
 		select {
 		case <-ti.C:
-			log.Infof("telegram heartbeat")
-			if err := t.c.Ping(t.ctx); err != nil {
-				log.Warnf("telegram reconncting")
-				c, stop, err := GetClientWithStore(t.ctx, t.store)
-				if err != nil {
-					log.Errorf("reconnect failed with telegram")
-					panic(err)
+			go func() {
+				defer func(){
+					if r := recover(); r != nil {
+						log.Errorf("panic recovered for heartbeat", r)
+					}
+				}()
+				log.Infof("heatbeat", "telegram heartbeat")
+				if err := t.c.Ping(t.ctx); err != nil {
+					log.Warnf("heatbeat", "telegram reconnecting")
+					c, stop, err := GetClientWithStore(t.ctx, t.store)
+					if err != nil {
+						log.Errorf("heatbeat", "reconnect failed with telegram")
+					}
+					// (*t.close)()
+					t.c = c
+					t.close = stop
+					t.manager = peers.Options{Storage: storage.NewPeers(t.store.Kvd)}.Build(c.API())
+					log.Infof("heatbeat", "reconnect successfull")
 				}
-				(*t.close)()
-				t.c = c
-				t.close = stop
-				t.manager = peers.Options{Storage: storage.NewPeers(t.store.Kvd)}.Build(c.API())
-				log.Infof("reconnect successfull")
-			}
+			}()
 		}
 	}
 }
