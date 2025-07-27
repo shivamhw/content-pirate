@@ -72,7 +72,7 @@ func (t *Telegram) heartBeat() error {
 		select {
 		case <-ti.C:
 			go func() {
-				defer func(){
+				defer func() {
 					if r := recover(); r != nil {
 						log.Errorf("panic recovered for heartbeat", r)
 					}
@@ -121,6 +121,26 @@ func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, *b
 	return c, &stop, nil
 }
 
+func (t *Telegram) SearchChat(c string, q string) (result []tg.Message, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, t.manager, c)
+	if err != nil {
+		return nil, err
+	}
+	res, err := t.c.API().MessagesSearch(t.ctx, &tg.MessagesSearchRequest{
+		Q:    q,
+		Filter: &tg.InputMessagesFilterEmpty{},
+		Peer: peer.InputPeer(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result, err = convertMsgcls(res)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (t *Telegram) ListChats() (result []*Dialog, err error) {
 	result, err = List(logctx.Named(t.ctx, "ls"), t.c, t.user.Store.Kvd, ListOptions{Filter: "true"})
 	if err != nil {
@@ -132,7 +152,7 @@ func (t *Telegram) ListChats() (result []*Dialog, err error) {
 	return result, nil
 }
 
-func (t *Telegram) SearchChats(q string) (result []*Dialog, err error) {
+func (t *Telegram) SearchUsername(q string) (result []*Dialog, err error) {
 	resolved, err := t.c.API().ContactsSearch(t.ctx, &tg.ContactsSearchRequest{
 		Q:     q,
 		Limit: 5,
@@ -200,6 +220,16 @@ func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []t
 		return result, err
 	}
 
+	result, err = convertMsgcls(his)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func convertMsgcls(his tg.MessagesMessagesClass) (result []tg.Message, err error) {
+
 	switch v := his.(type) {
 	case *tg.MessagesMessages:
 		for _, msg := range v.Messages {
@@ -229,8 +259,7 @@ func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []t
 	default:
 		panic(fmt.Sprintf("unexpected response type: %T", v))
 	}
-
-	return result, nil
+	return
 }
 
 func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.MessagesBotCallbackAnswer, err error) {
