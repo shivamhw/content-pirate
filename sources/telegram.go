@@ -82,7 +82,6 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 			} else {
 				log.Warnf("no media found in message", "msg", m.ID)
 			}
-			fmt.Print("using size", size)
 			t := Post{
 				MediaType: commons.MSG_TYPE,
 				Id:        fmt.Sprintf("%d", m.ID),
