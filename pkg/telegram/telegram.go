@@ -359,3 +359,7 @@ func (t *Telegram) GetSingleMessage(msgId int, peer string) (*tg.Message, error)
 
 	return msg, nil
 }
+
+func (t *Telegram) GetClient() *telegram.Client {
+	return t.c
+}
