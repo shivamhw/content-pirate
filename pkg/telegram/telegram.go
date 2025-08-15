@@ -345,3 +345,17 @@ func GetFilenameFromMessage(msg *tg.Message) string {
 	}
 	return mm.Name
 }
+
+func (t *Telegram) GetSingleMessage(msgId int, peer string) (*tg.Message, error) {
+	p, err := tutil.GetInputPeer(t.ctx, t.manager, peer)
+	if err != nil {
+		return nil, err
+	}
+
+	msg, err := tutil.GetSingleMessage(t.ctx, t.c.API(), p.InputPeer(), msgId)
+	if err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+}
