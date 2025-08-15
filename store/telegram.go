@@ -45,11 +45,12 @@ func (s *TelegramStore) GetItemDstPath(i *commons.Item) string {
 }
 
 func (s *TelegramStore) Write(i *commons.Item) (path string, err error) {
-	_, err = s.C.ForwardMsg(i.SourceAc, i.Dst, i.Id)
+	nMsg, err := s.C.ForwardMsg(i.SourceAc, i.Dst, i.Id)
 	if err != nil {
 		return "", err
 	}
-	log.Infof("forwarded msg", "from", i.SourceAc, "to", i.Dst, "msg", i.FileName)
+	i.DstId = fmt.Sprintf("%d", nMsg.ID)
+	log.Infof("forwarded msg", "from", i.SourceAc, "to", i.Dst, "msg", i.FileName, "id", i.DstId)
 	return i.Dst, err
 }
 

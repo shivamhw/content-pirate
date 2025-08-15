@@ -18,6 +18,7 @@ type Item struct {
 	FileName string
 	Type     MediaType
 	Dst      string
+	DstId    string
 	Status   ItemStatus
 	SourceAc string
 	Ext      string

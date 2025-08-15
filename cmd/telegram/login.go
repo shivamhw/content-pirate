@@ -2,6 +2,7 @@ package telegram_cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/shivamhw/content-pirate/pkg/telegram"
 	"github.com/spf13/cobra"
@@ -16,6 +17,10 @@ func loginCmd() *cobra.Command {
 			t, err := telegram.NewTelegram(context.Background(), &user)
 			if err != nil {
 				return err
+			}
+			
+			if user.PhoneNumber == "" && otp == ""{
+				return fmt.Errorf("please enter either phone nm or otp")
 			}
 
 			err = t.Login(&telegram.LoginOpts{
