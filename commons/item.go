@@ -21,6 +21,7 @@ type Item struct {
 	DstId    string
 	Status   ItemStatus
 	SourceAc string
+	Size     int64
 	Ext      string
 	Title    string
 	Ctx      context.Context `json:"-"`

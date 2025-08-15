@@ -3,6 +3,7 @@ package scrapper
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/kv"
 	"github.com/shivamhw/content-pirate/pkg/log"
+	"github.com/shivamhw/content-pirate/pkg/notifier"
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
 	"github.com/shivamhw/content-pirate/sources"
@@ -29,6 +31,7 @@ type ScrapperV1 struct {
 	taskStoreIdx map[string][]store.Store
 	cache        *telegram.Store
 	Id           string
+	ntfy         notifier.Notifier
 }
 
 type AuthCfg struct {
@@ -103,6 +106,7 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 		scr.SourceStore, err = sources.NewTelegramSource(scr.ctx, &sources.TelegramSourceOtps{
 			PhoneNumber: cfg.PhoneNumber,
 		})
+		scr.ntfy = notifier.NewBleveNotifier(os.Getenv("BLEVE_URL"), os.Getenv("BLEVE_IDX"))
 	default:
 		return nil, fmt.Errorf("unknown source store %s", cfg.SourceType)
 	}
@@ -145,6 +149,10 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 		} else {
 			i.I.Dst = dst
 			s.cache.Kvd.Set(s.ctx, key, []byte(i.I.Id))
+			err = s.ntfy.Notify(s.ctx, i.I, notifier.NOTIFY_ITEM_SAVED)
+			if err != nil {
+				log.Errorf("failed to notify item saved", "item", i.I.FileName, "err", err)
+			}
 		}
 	}
 	return
@@ -182,6 +190,7 @@ LOOP:
 						Type:     post.MediaType,
 						Ext:      post.Ext,
 						SourceAc: post.SourceAc,
+						Size:     post.Size,
 						Ctx:      ctx,
 					}
 					v.I = append(v.I, item)
@@ -284,7 +293,7 @@ LOOP:
 			}
 		case <-t.C:
 			log.Debugf("scrapper heartbeat......")
-			log.Infof("total saved items", "posts", masterCounter, "time", fmt.Sprintf("%.f",time.Since(start).Minutes()))
+			log.Infof("total saved items", "posts", masterCounter, "time", fmt.Sprintf("%.f", time.Since(start).Minutes()))
 		}
 	}
 	s.swg.Wait()

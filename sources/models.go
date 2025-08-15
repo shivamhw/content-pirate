@@ -23,6 +23,7 @@ type Post struct {
 	SourceAc  string
 	Ext       string
 	FileName  string
+	Size      int64
 }
 
 type ScrapeOpts struct {

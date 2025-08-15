@@ -76,12 +76,20 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 	for _, m := range msgs {
 		if m.Date > int(opts.LastFrom.Unix()) {
 			log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
+			size := 0
+			if s, ok := telegram.GetMediaFromMessage(&m); ok {
+				size = int(s.Size)
+			} else {
+				log.Warnf("no media found in message", "msg", m.ID)
+			}
+			fmt.Print("using size", size)
 			t := Post{
 				MediaType: commons.MSG_TYPE,
 				Id:        fmt.Sprintf("%d", m.ID),
 				SourceAc:  fmt.Sprintf("%d", src.UserId),
 				Title:     m.Message,
 				FileName:  telegram.GetFilenameFromMessage(&m),
+				Size: int64(size),
 			}
 			p = append(p, t)
 		}

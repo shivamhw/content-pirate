@@ -326,15 +326,22 @@ func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Mess
 	return nMsg, nil
 }
 
-func GetFilenameFromMessage(msg *tg.Message) string {
+func GetMediaFromMessage(msg *tg.Message) (*tmedia.Media, bool) {
 	media, ok := msg.GetMedia()
-	id := fmt.Sprintf("%d", msg.ID)
 	if !ok {
-		return id
+		return nil, false
 	}
 	mm, ok := tmedia.ExtractMedia(media)
 	if !ok {
-		return id
+		return nil, false
+	}
+	return mm, true
+}
+
+func GetFilenameFromMessage(msg *tg.Message) string {
+	mm, ok := GetMediaFromMessage(msg)
+	if !ok {
+		return fmt.Sprintf("%d", msg.ID)
 	}
 	return mm.Name
 }
