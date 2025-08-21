@@ -193,10 +193,15 @@ LOOP:
 						Size:     post.Size,
 						Ctx:      ctx,
 					}
+
+					// Protect concurrent access to task fields
+					s.l.Lock()
 					v.I = append(v.I, item)
 					v.Status.TotalItem = int64(len(v.I))
-					log.Debugf("updating total item", "task", v.Id, "items", v.Status.TotalItem)
 					v.Status.Status = TaskStarted
+					s.l.Unlock()
+
+					log.Debugf("updating total item", "task", v.Id, "items", v.Status.TotalItem)
 					nTask, err := s.UpdateTask(v.Id, TaskUpdateOpts{
 						TaskStatus: &v.Status,
 						Items:      []commons.Item{item},
@@ -227,7 +232,11 @@ LOOP:
 }
 
 func (s *ScrapperV1) filterStores(t *Task, i *commons.Item) (fStores []store.Store) {
-	for _, st := range s.taskStoreIdx[t.Id] {
+	s.l.Lock()
+	stores := s.taskStoreIdx[t.Id]
+	s.l.Unlock()
+
+	for _, st := range stores {
 		if st.ItemExists(i) {
 			log.Warnf("file already exist", "file", i.FileName)
 			continue

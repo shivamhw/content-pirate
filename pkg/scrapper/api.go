@@ -2,7 +2,6 @@ package scrapper
 
 import (
 	"encoding/json"
-	"sync/atomic"
 	"time"
 
 	log "log/slog"
@@ -54,7 +53,9 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 	if err != nil {
 		return "", err
 	}
+	s.l.Lock()
 	s.taskStoreIdx[t.Id] = stores
+	s.l.Unlock()
 	s.M.TaskQ <- &t
 	return id, nil
 }
@@ -155,14 +156,15 @@ func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error
 }
 
 func (s *ScrapperV1) increment(id string) {
-
 	log.Debug("incrementing item done", "taskId", id)
+
 	t, err := s.GetJob(id)
 	if err != nil {
 		log.Error("error incrementing", "taskId", id)
 		return
 	}
-	atomic.AddInt64(&t.Status.ItemDone, 1)
+
+	t.Status.ItemDone++
 	_, err = s.UpdateItemDone(id, TaskUpdateOpts{
 		TaskStatus: &t.Status,
 	})
