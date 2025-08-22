@@ -29,6 +29,7 @@ type ScrapperV1 struct {
 	KV           kv.KV
 	l            *sync.Mutex
 	taskStoreIdx map[string][]store.Store
+	storeMutex   sync.RWMutex // Dedicated mutex for taskStoreIdx
 	cache        *telegram.Store
 	Id           string
 	ntfy         notifier.Notifier
@@ -92,6 +93,7 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 		KV:           kv.GetInMemoryKv(),
 		l:            &sync.Mutex{},
 		taskStoreIdx: make(map[string][]store.Store),
+		storeMutex:   sync.RWMutex{},
 		cache:        cache,
 		Id:           strings.Split(uuid.New().String(), "-")[0],
 	}
@@ -232,9 +234,9 @@ LOOP:
 }
 
 func (s *ScrapperV1) filterStores(t *Task, i *commons.Item) (fStores []store.Store) {
-	s.l.Lock()
+	s.storeMutex.RLock()
 	stores := s.taskStoreIdx[t.Id]
-	s.l.Unlock()
+	s.storeMutex.RUnlock()
 
 	for _, st := range stores {
 		if st.ItemExists(i) {

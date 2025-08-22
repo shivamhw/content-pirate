@@ -53,9 +53,9 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 	if err != nil {
 		return "", err
 	}
-	s.l.Lock()
+	s.storeMutex.Lock()
 	s.taskStoreIdx[t.Id] = stores
-	s.l.Unlock()
+	s.storeMutex.Unlock()
 	s.M.TaskQ <- &t
 	return id, nil
 }
@@ -106,8 +106,8 @@ func (s *ScrapperV1) WaitOnId(id string, waitFor int) bool {
 }
 
 func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
-	defer s.l.Unlock()
 	s.l.Lock()
+	defer s.l.Unlock()
 	var t Task
 	data, err := s.KV.Get("task", id)
 	if err != nil {
@@ -134,8 +134,8 @@ func (s *ScrapperV1) UpdateTask(id string, opts TaskUpdateOpts) (Task, error) {
 }
 
 func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error) {
-	defer s.l.Unlock()
 	s.l.Lock()
+	defer s.l.Unlock()
 	var t Task
 	data, err := s.KV.Get("task", id)
 	if err != nil {
@@ -145,7 +145,7 @@ func (s *ScrapperV1) UpdateItemDone(id string, opts TaskUpdateOpts) (Task, error
 	if err != nil {
 		return Task{}, err
 	}
-	t.Status.ItemDone = opts.ItemDone
+	t.Status.ItemDone = opts.TaskStatus.ItemDone
 	// hack alert
 	v, _ := json.Marshal(t)
 	err = s.KV.Set("task", id, v)
