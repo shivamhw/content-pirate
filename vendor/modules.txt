@@ -3,12 +3,25 @@
 github.com/AlecAivazis/survey/v2
 github.com/AlecAivazis/survey/v2/core
 github.com/AlecAivazis/survey/v2/terminal
+# github.com/AnimeKaizoku/cacher v1.0.2
+## explicit; go 1.18
+github.com/AnimeKaizoku/cacher
 # github.com/bcicen/jstream v1.0.1
 ## explicit; go 1.13
 github.com/bcicen/jstream
 # github.com/beevik/ntp v1.4.3
 ## explicit; go 1.17
 github.com/beevik/ntp
+# github.com/celestix/gotgproto v1.0.0-beta21
+## explicit; go 1.23.3
+github.com/celestix/gotgproto
+github.com/celestix/gotgproto/dispatcher
+github.com/celestix/gotgproto/errors
+github.com/celestix/gotgproto/ext
+github.com/celestix/gotgproto/functions
+github.com/celestix/gotgproto/sessionMaker
+github.com/celestix/gotgproto/storage
+github.com/celestix/gotgproto/types
 # github.com/cenkalti/backoff/v4 v4.3.0
 ## explicit; go 1.18
 github.com/cenkalti/backoff/v4
@@ -23,6 +36,9 @@ github.com/coder/websocket/internal/wsjs
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
+# github.com/dustin/go-humanize v1.0.1
+## explicit; go 1.16
+github.com/dustin/go-humanize
 # github.com/expr-lang/expr v1.17.5
 ## explicit; go 1.18
 github.com/expr-lang/expr
@@ -62,6 +78,12 @@ github.com/gabriel-vasile/mimetype/internal/magic
 # github.com/ghodss/yaml v1.0.0
 ## explicit
 github.com/ghodss/yaml
+# github.com/glebarez/go-sqlite v1.22.0
+## explicit; go 1.17
+github.com/glebarez/go-sqlite
+# github.com/glebarez/sqlite v1.11.0
+## explicit; go 1.18
+github.com/glebarez/sqlite
 # github.com/go-faster/errors v0.7.1
 ## explicit; go 1.20
 github.com/go-faster/errors
@@ -149,8 +171,12 @@ github.com/gotd/td/telegram/downloader
 github.com/gotd/td/telegram/internal/manager
 github.com/gotd/td/telegram/internal/upconv
 github.com/gotd/td/telegram/internal/version
+github.com/gotd/td/telegram/message
 github.com/gotd/td/telegram/message/entity
+github.com/gotd/td/telegram/message/inline
+github.com/gotd/td/telegram/message/markup
 github.com/gotd/td/telegram/message/peer
+github.com/gotd/td/telegram/message/styling
 github.com/gotd/td/telegram/peers
 github.com/gotd/td/telegram/query
 github.com/gotd/td/telegram/query/channels/participants
@@ -160,6 +186,8 @@ github.com/gotd/td/telegram/query/messages
 github.com/gotd/td/telegram/query/messages/stickers/featured
 github.com/gotd/td/telegram/query/photos
 github.com/gotd/td/telegram/updates
+github.com/gotd/td/telegram/uploader
+github.com/gotd/td/telegram/uploader/source
 github.com/gotd/td/testutil
 github.com/gotd/td/tg
 github.com/gotd/td/tgerr
@@ -210,6 +238,12 @@ github.com/jedib0t/go-pretty/v6/text
 # github.com/jinzhu/copier v0.4.0
 ## explicit; go 1.13
 github.com/jinzhu/copier
+# github.com/jinzhu/inflection v1.0.0
+## explicit
+github.com/jinzhu/inflection
+# github.com/jinzhu/now v1.1.5
+## explicit; go 1.12
+github.com/jinzhu/now
 # github.com/joho/godotenv v1.5.1
 ## explicit; go 1.12
 github.com/joho/godotenv
@@ -246,6 +280,9 @@ github.com/mgutz/ansi
 # github.com/mitchellh/mapstructure v1.5.0
 ## explicit; go 1.14
 github.com/mitchellh/mapstructure
+# github.com/ncruces/go-strftime v0.1.9
+## explicit; go 1.17
+github.com/ncruces/go-strftime
 # github.com/ogen-go/ogen v1.14.0
 ## explicit; go 1.23.0
 github.com/ogen-go/ogen
@@ -279,9 +316,15 @@ github.com/pelletier/go-toml/v2/internal/characters
 github.com/pelletier/go-toml/v2/internal/danger
 github.com/pelletier/go-toml/v2/internal/tracker
 github.com/pelletier/go-toml/v2/unstable
+# github.com/pkg/errors v0.9.1
+## explicit
+github.com/pkg/errors
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
+# github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+## explicit; go 1.12
+github.com/remyoudompheng/bigfft
 # github.com/rivo/uniseg v0.4.7
 ## explicit; go 1.18
 github.com/rivo/uniseg
@@ -514,6 +557,52 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# gorm.io/gorm v1.25.12
+## explicit; go 1.18
+gorm.io/gorm
+gorm.io/gorm/callbacks
+gorm.io/gorm/clause
+gorm.io/gorm/logger
+gorm.io/gorm/migrator
+gorm.io/gorm/schema
+gorm.io/gorm/utils
+# modernc.org/libc v1.61.8
+## explicit; go 1.21
+modernc.org/libc
+modernc.org/libc/errno
+modernc.org/libc/fcntl
+modernc.org/libc/fts
+modernc.org/libc/grp
+modernc.org/libc/honnef.co/go/netdb
+modernc.org/libc/langinfo
+modernc.org/libc/limits
+modernc.org/libc/netdb
+modernc.org/libc/netinet/in
+modernc.org/libc/poll
+modernc.org/libc/pthread
+modernc.org/libc/pwd
+modernc.org/libc/signal
+modernc.org/libc/stdio
+modernc.org/libc/stdlib
+modernc.org/libc/sys/socket
+modernc.org/libc/sys/stat
+modernc.org/libc/sys/types
+modernc.org/libc/termios
+modernc.org/libc/time
+modernc.org/libc/unistd
+modernc.org/libc/utime
+modernc.org/libc/uuid
+modernc.org/libc/uuid/uuid
+modernc.org/libc/wctype
+# modernc.org/mathutil v1.7.1
+## explicit; go 1.21
+modernc.org/mathutil
+# modernc.org/memory v1.8.2
+## explicit; go 1.21
+modernc.org/memory
+# modernc.org/sqlite v1.34.4
+## explicit; go 1.21
+modernc.org/sqlite/lib
 # rsc.io/qr v0.2.0
 ## explicit
 rsc.io/qr
