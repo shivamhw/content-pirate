@@ -17,10 +17,10 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/peers"
+	"github.com/gotd/td/telegram/query"
 	"github.com/gotd/td/tg"
 
 	"github.com/iyear/tdl/core/tclient"
-	"github.com/iyear/tdl/core/tmedia"
 	"github.com/iyear/tdl/core/util/tutil"
 	"github.com/shivamhw/content-pirate/pkg/log"
 )
@@ -123,18 +123,49 @@ func (t *Telegram) SearchChat(c string, q string) (result []tg.Message, err erro
 }
 
 func (t *Telegram) ListChats() (result []*Dialog, err error) {
-	return
-	// result, err = List(logctx.Named(t.ctx, "ls"), t.c, t.user.Store.Kvd, ListOptions{Filter: "true"})
-	// if err != nil {
-	// 	return result, err
-	// }
-	// for _, r := range result {
-	// 	log.Infof(r.VisibleName)
-	// }
-	// return result, nil
+	c := t.c.Client
+	dialogs, err := query.GetDialogs(c.API()).BatchSize(100).Collect(t.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	blocked, err := tutil.GetBlockedDialogs(t.ctx, c.API())
+	if err != nil {
+		return nil, err
+	}
+
+	result = make([]*Dialog, 0, len(dialogs))
+	for _, d := range dialogs {
+		id := tutil.GetInputPeerID(d.Peer)
+		// filter blocked peers
+		if _, ok := blocked[id]; ok {
+			continue
+		}
+
+		var r *Dialog
+		switch t := d.Peer.(type) {
+		case *tg.InputPeerUser:
+			r = processUser(t.UserID, d.Entities)
+			r.AccessHash = t.AccessHash
+		case *tg.InputPeerChannel:
+			r = processChannel(context.Background(), c.API(), t.ChannelID, d.Entities)
+			r.AccessHash = t.AccessHash
+		case *tg.InputPeerChat:
+			r = processChat(t.ChatID, d.Entities)
+		}
+
+		// skip unsupported types
+		if r == nil {
+			continue
+		}
+
+		result = append(result, r)
+	}
+
+	return result, nil
 }
 
-func (t *Telegram) SearchUsername(q string) (result []*Dialog, err error) {
+func (t *Telegram) SearchSubscribedChannels(q string) (result []*Dialog, err error) {
 	resolved, err := t.c.API().ContactsSearch(t.ctx, &tg.ContactsSearchRequest{
 		Q:     q,
 		Limit: 5,
@@ -307,12 +338,12 @@ func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Mess
 	return nMsg, nil
 }
 
-func GetMediaFromMessage(msg *tg.Message) (*tmedia.Media, bool) {
+func GetMediaFromMessage(msg *tg.Message) (*Media, bool) {
 	media, ok := msg.GetMedia()
 	if !ok {
 		return nil, false
 	}
-	mm, ok := tmedia.ExtractMedia(media)
+	mm, ok := ExtractMedia(media)
 	if !ok {
 		return nil, false
 	}

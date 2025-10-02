@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/expr-lang/expr"
 	"github.com/go-faster/errors"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message/peer"
@@ -18,7 +17,6 @@ import (
 	"github.com/iyear/tdl/core/logctx"
 	"github.com/iyear/tdl/core/storage"
 	"github.com/iyear/tdl/core/util/tutil"
-	"github.com/iyear/tdl/pkg/texpr"
 )
 
 //go:generate go-enum --names --values --flag --nocase
@@ -55,26 +53,6 @@ type ListOptions struct {
 }
 
 func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts ListOptions) ([]*Dialog, error) {
-	log := logctx.From(ctx)
-	runewidth.EastAsianWidth = false
-	runewidth.DefaultCondition.EastAsianWidth = false
-
-	// output available fields
-	if opts.Filter == "-" {
-		fg := texpr.NewFieldsGetter(nil)
-		fields, err := fg.Walk(&Dialog{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to walk fields: %w", err)
-		}
-
-		fmt.Print(fg.Sprint(fields, true))
-		return nil, nil
-	}
-	// compile filter
-	filter, err := expr.Compile(opts.Filter, expr.AsBool())
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile filter: %w", err)
-	}
 
 	dialogs, err := query.GetDialogs(c.API()).BatchSize(100).Collect(ctx)
 	if err != nil {
@@ -85,16 +63,9 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 	if err != nil {
 		return nil, err
 	}
-
-	manager := peers.Options{Storage: storage.NewPeers(kvd)}.Build(c.API())
 	result := make([]*Dialog, 0, len(dialogs))
 	for _, d := range dialogs {
 		id := tutil.GetInputPeerID(d.Peer)
-
-		// we can update our access hash state if there is any new peer.
-		if err = applyPeers(ctx, manager, d.Entities, id); err != nil {
-			log.Warn("failed to apply peer updates", zap.Int64("id", id), zap.Error(err))
-		}
 
 		// filter blocked peers
 		if _, ok := blocked[id]; ok {
@@ -118,14 +89,6 @@ func List(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Lis
 			continue
 		}
 
-		// filter
-		b, err := texpr.Run(filter, r)
-		if err != nil {
-			return nil, fmt.Errorf("failed to run filter: %w", err)
-		}
-		if !b.(bool) {
-			continue
-		}
 
 		result = append(result, r)
 	}

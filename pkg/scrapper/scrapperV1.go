@@ -181,8 +181,25 @@ LOOP:
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
 				for post := range p {
-					ctx := s.ctx
+					log.Debugf("media type", "post", post.FileName, "type", post.MediaType)
+					if post.MediaType == commons.IMG_TYPE && v.J.Opts.SkipImgs {
+						log.Warnf("skipping imgs", "post", post)
+						continue
+					}
+					if post.MediaType == commons.VID_TYPE && v.J.Opts.SkipVideos {
+						log.Warnf("skipping vids", "post", post)
+						continue
+					}
+					if post.MediaType == commons.DOC_TYPE && v.J.Opts.SkipFiles {
+						log.Warnf("skipping file", "post", post)
+						continue
+					}
+					if post.MediaType == commons.MSG_TYPE && v.J.Opts.SkipText {
+						log.Warnf("skipping text", "post", post)
+						continue
+					}
 
+					ctx := s.ctx
 					if s.sCfg.TimeOut > 0 {
 						ctx, _ = context.WithTimeout(ctx, time.Duration(s.sCfg.TimeOut)*time.Second)
 					}
@@ -294,6 +311,7 @@ LOOP:
 			if !ok {
 				close(s.M.imgq)
 				close(s.M.vidq)
+				close(s.M.msgq)
 				break LOOP
 			}
 			switch v.I.Type {

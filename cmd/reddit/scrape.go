@@ -67,7 +67,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&scrapeOpts.Duration, "duration", "day", "duration")
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
 	cmd.Flags().StringSliceVar(&ids, "source", []string{}, "source channel ids")
-	cmd.Flags().BoolVar(&scrapeOpts.SkipVideos, "skip-vid", true, "skip video download")
+	cmd.Flags().BoolVar(&scrapeOpts.SkipVideos, "skip-vid", false, "skip video download")
 	cmd.Flags().BoolVar(&scrapeOpts.SkipCollection, "skip-collection", false, "download full collection")
 	cmd.Flags().BoolVar(&dst.Clean, "cleanOnStart", false, "clean folders")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 10, "nof img proccesing worker")

@@ -3,6 +3,8 @@ package sources
 import (
 	"context"
 	"fmt"
+
+	"github.com/gotd/td/tg"
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
@@ -20,7 +22,7 @@ type TelegramSource struct {
 
 func NewTelegramSource(ctx context.Context, cfg *TelegramSourceOtps) (*TelegramSource, error) {
 	opts := &telegram.ClientOpts{
-		Phone: cfg.PhoneNumber,
+		Phone:       cfg.PhoneNumber,
 		SessionPath: cfg.SessionPath,
 	}
 	if err := opts.Sanitize(); err != nil {
@@ -63,7 +65,7 @@ func (t *TelegramSource) ScrapePosts(ctx context.Context, chat string, opts Scra
 func (t *TelegramSource) scrape(src string, opts ScrapeOpts) (p []Post, err error) {
 	minId := -1
 	lMsgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
-		Limit: 11,
+		Limit:      11,
 		OffsetDate: int(opts.LastFrom.Unix()),
 	})
 	if err != nil {
@@ -79,29 +81,49 @@ func (t *TelegramSource) scrape(src string, opts ScrapeOpts) (p []Post, err erro
 		Limit: opts.Limit,
 		MinID: minId,
 	})
-	log.Infof("scrapped", "unfiltered msgs", len(msgs))
 	for _, m := range msgs {
-		if m.Date > int(opts.LastFrom.Unix()) {
-			log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
-			size := 0
-			if s, ok := telegram.GetMediaFromMessage(&m); ok {
-				size = int(s.Size)
-			} else {
-				log.Warnf("no media found in message", "msg", m.ID)
-			}
-			t := Post{
-				MediaType: commons.MSG_TYPE,
-				Id:        fmt.Sprintf("%d", m.ID),
-				SourceAc:  src,
-				Title:     m.Message,
-				FileName:  telegram.GetFilenameFromMessage(&m),
-				Size: int64(size),
-			}
-			p = append(p, t)
+		log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
+		t, err := t.preparePost(src, m)
+		if err != nil {
+			log.Errorf("failed converting msg to post", "err", err)
+			continue
+		}
+		p = append(p, t)
+	}
+	log.Infof("scrapped", "posts", len(p))
+	return
+}
+
+func (t *TelegramSource) preparePost(src string, m tg.Message) (p Post, err error) {
+	size := 0
+	mt := commons.MSG_TYPE
+	if m.Media == nil {
+		log.Debugf("msg type", mt, "id", m.ID)
+	} else {
+		s, ok := telegram.GetMediaFromMessage(&m)
+		if !ok {
+			return p, fmt.Errorf("error parsing media from msg %v",m)
+		}
+		size = int(s.Size)
+		switch s.Type {
+		case telegram.TELEGRAM_IMG:
+			mt = commons.IMG_TYPE
+		case telegram.TELEGRAM_VID:
+			mt = commons.VID_TYPE
+		case telegram.TELEGRAM_DOC:
+			mt = commons.DOC_TYPE
 		}
 	}
-	log.Infof("scrapped", "filtered posts", len(p))
-	return
+	p = Post{
+		MediaType: mt,
+		Id:        fmt.Sprintf("%d", m.ID),
+		SourceAc:  src,
+		Title:     m.Message,
+		FileName:  telegram.GetFilenameFromMessage(&m),
+		Size:      int64(size),
+	}
+	return 
+
 }
 
 func (t *TelegramSource) DownloadItem(ctx context.Context, i *commons.Item) (err error) {

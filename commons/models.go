@@ -11,6 +11,7 @@ const (
 	VID_TYPE MediaType = "vids"
 	IMG_TYPE MediaType = "imgs"
     MSG_TYPE MediaType = "msg"
+	DOC_TYPE MediaType = "doc"
 )
 
 type Job struct {

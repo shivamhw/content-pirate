@@ -16,6 +16,7 @@ func lsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := telegram.NewTelegram(context.Background(), &telegram.ClientOpts{
 				Phone: user.Phone,
+				SessionPath: SessionPath,
 			})
 			if err != nil {
 				return err

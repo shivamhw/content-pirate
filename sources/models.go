@@ -7,12 +7,11 @@ import (
 	"github.com/shivamhw/content-pirate/pkg/reddit"
 )
 
-
 type SourceType string
 
 const (
-     SOURCE_TYPE_REDDIT SourceType = "SOURCE_TYPE_REDDIT"
-     SOURCE_TYPE_TELEGRAM SourceType = "SOURCE_TYPE_TELEGRAM"
+	SOURCE_TYPE_REDDIT   SourceType = "SOURCE_TYPE_REDDIT"
+	SOURCE_TYPE_TELEGRAM SourceType = "SOURCE_TYPE_TELEGRAM"
 )
 
 type Post struct {
@@ -35,5 +34,8 @@ type ScrapeOpts struct {
 	NextPage       string
 	SkipCollection bool
 	SkipVideos     bool
+	SkipText       bool
+	SkipImgs       bool
+	SkipFiles      bool
 	RedditFilter   reddit.PostFilter
 }
