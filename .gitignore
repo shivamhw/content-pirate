@@ -7,3 +7,9 @@ send.sh
 testLo/*/
 /Rdata
 content-pirate
+teleLogin/
+gotgproto.session
+temp/
+teleData/
+poc.go
+telegram_test.go

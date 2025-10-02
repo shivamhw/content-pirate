@@ -3,8 +3,6 @@ package sources
 import (
 	"context"
 	"fmt"
-	"strconv"
-
 	"github.com/shivamhw/content-pirate/commons"
 	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/shivamhw/content-pirate/pkg/telegram"
@@ -12,6 +10,7 @@ import (
 
 type TelegramSourceOtps struct {
 	PhoneNumber string
+	SessionPath string
 }
 
 type TelegramSource struct {
@@ -20,17 +19,21 @@ type TelegramSource struct {
 }
 
 func NewTelegramSource(ctx context.Context, cfg *TelegramSourceOtps) (*TelegramSource, error) {
-	user := &telegram.UserData{
-		PhoneNumber: cfg.PhoneNumber,
+	opts := &telegram.ClientOpts{
+		Phone: cfg.PhoneNumber,
+		SessionPath: cfg.SessionPath,
 	}
-	t, err := telegram.NewTelegram(ctx, user)
+	if err := opts.Sanitize(); err != nil {
+		return nil, err
+	}
+	t, err := telegram.NewTelegram(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 	if ok, _ := t.WhoAmI(); !ok.Authorized {
-		return nil, fmt.Errorf("user not logged in %s", user.PhoneNumber)
+		return nil, fmt.Errorf("user not logged in %s", opts.Phone)
 	} else {
-		log.Infof("user logged in ", "user", user.PhoneNumber)
+		log.Infof("user logged in ", "user", opts.Phone)
 	}
 	return &TelegramSource{
 		c:   t,
@@ -39,17 +42,10 @@ func NewTelegramSource(ctx context.Context, cfg *TelegramSourceOtps) (*TelegramS
 }
 
 func (t *TelegramSource) ScrapePosts(ctx context.Context, chat string, opts ScrapeOpts) (post chan Post, err error) {
-	chatId, err := strconv.ParseInt(chat, 10, 64)
 	post = make(chan Post, 5)
 
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("scrapping telegram ", "id", chatId)
-	chatAc := &telegram.Recipient{
-		UserId:     chatId,
-	}
-	posts, err := t.scrape(chatAc, opts)
+	log.Infof("scrapping telegram ", "id", chat)
+	posts, err := t.scrape(chat, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -64,14 +60,25 @@ func (t *TelegramSource) ScrapePosts(ctx context.Context, chat string, opts Scra
 	return
 }
 
-func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []Post, err error) {
-	msgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
-		Limit: opts.Limit,
+func (t *TelegramSource) scrape(src string, opts ScrapeOpts) (p []Post, err error) {
+	minId := -1
+	lMsgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
+		Limit: 11,
+		OffsetDate: int(opts.LastFrom.Unix()),
 	})
 	if err != nil {
 		log.Errorf(err.Error())
 		return nil, err
 	}
+	if len(lMsgs) <= 0 {
+		log.Warnf("no last msg found for", "src", src, "offset", opts.LastFrom.String())
+	} else {
+		minId = lMsgs[0].ID
+	}
+	msgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
+		Limit: opts.Limit,
+		MinID: minId,
+	})
 	log.Infof("scrapped", "unfiltered msgs", len(msgs))
 	for _, m := range msgs {
 		if m.Date > int(opts.LastFrom.Unix()) {
@@ -85,7 +92,7 @@ func (t *TelegramSource) scrape(src *telegram.Recipient, opts ScrapeOpts) (p []P
 			t := Post{
 				MediaType: commons.MSG_TYPE,
 				Id:        fmt.Sprintf("%d", m.ID),
-				SourceAc:  fmt.Sprintf("%d", src.UserId),
+				SourceAc:  src,
 				Title:     m.Message,
 				FileName:  telegram.GetFilenameFromMessage(&m),
 				Size: int64(size),

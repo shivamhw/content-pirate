@@ -45,6 +45,7 @@ type AuthCfg struct {
 type ScrapeCfg struct {
 	AuthCfg      string
 	PhoneNumber  string
+	SessionPath  string
 	ImgWorkers   int
 	VidWorkers   int
 	TopicWorkers int
@@ -107,6 +108,7 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 	case sources.SOURCE_TYPE_TELEGRAM:
 		scr.SourceStore, err = sources.NewTelegramSource(scr.ctx, &sources.TelegramSourceOtps{
 			PhoneNumber: cfg.PhoneNumber,
+			SessionPath: cfg.SessionPath,
 		})
 		scr.ntfy = notifier.NewBleveNotifier(os.Getenv("BLEVE_URL"), os.Getenv("BLEVE_IDX"))
 	default:

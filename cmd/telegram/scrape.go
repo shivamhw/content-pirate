@@ -66,6 +66,7 @@ func scrapeCmd() *cobra.Command {
 	}
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
 	cmd.Flags().StringSliceVar(&ids, "source", []string{}, "source channel ids")
+	cmd.Flags().StringVar(&sCfg.SessionPath, "session-path", "", "session path for telegram")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 1, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.VidWorkers, "vid-worker", 1, "nof vid proccesing worker")
 	cmd.Flags().Int64Var(&sCfg.TimeOut, "time-out", 60, "timeout in seconds")

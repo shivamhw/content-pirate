@@ -5,68 +5,86 @@ import (
 	"fmt"
 	log "log/slog"
 
+	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
+	"github.com/iyear/tdl/core/tclient"
 )
 
 type LoginOpts struct {
 	Phone string
 	Otp   string
 	Hash  string
+	SessionPath string
+	Force bool
 }
 
-
-
-func (t *Telegram) Login(opts *LoginOpts, force bool) error {
+func Login(opts *LoginOpts) (hash string, err error) {
 	if opts.Otp == "" {
 		log.Info("running send code flow", "user", opts.Phone)
-		err := t.SendCode(opts)
+		hash, err = SendCode(opts)
 		if err != nil {
-			return err
+			return
 		}
 	} else {
 		log.Info("running submit code flow", "user", opts)
-		err := t.Otp(opts)
+		err = SubmitCode(opts)
 		if err != nil {
-			return err
+			return
 		}
 	}
-	return nil
+	return
 }
 
-//todo add support for other responses for sendCode
-func (t *Telegram) SendCode(opts *LoginOpts) error {
-	return t.c.Run(t.ctx, func(ctx context.Context) error {
-		a := t.c.Auth()
+// todo add support for other responses for sendCode
+func SendCode(opts *LoginOpts) (hash string, err error) {
+	client, err := tclient.New(context.Background(), tclient.Options{
+		AppID:            Appid,
+		AppHash:          AppHash,
+		Session: &session.FileStorage{Path: opts.SessionPath},
+	})
+	if err != nil {
+		return 
+	}
+	err = client.Run(context.Background(), func(ctx context.Context) (err error) {
+		a := client.Auth()
 		ok, err := a.Status(ctx)
 		if err != nil {
-			return err
+			return
 		}
-		if ok.Authorized {
+		if ok.Authorized && !opts.Force {
 			log.Warn("already logged in")
-			return nil
+			return
 		}
 		s, err := a.SendCode(ctx, opts.Phone, auth.SendCodeOptions{})
 		if err != nil {
-			log.Error("send code" ,"err", err)
-			return err
+			log.Error("send code", "err", err)
+			return
 		}
 		switch s := s.(type) {
 		case *tg.AuthSentCode:
-			hash := s.PhoneCodeHash
-			log.Info(hash)
-			t.user.Store.Kvd.Set(ctx, "codeHash", []byte(hash))
+			hash = s.PhoneCodeHash
 			log.Info("using hash", "hash", hash)
-			return nil
+			return
 		}
-		return nil
+		return
 	})
+	return
 }
 
-//todo add support for password
-func (t *Telegram) Otp(opts *LoginOpts) error {
-	return t.c.Run(t.ctx, func(ctx context.Context) error {
-		a := t.c.Auth()
+// todo add support for password
+func SubmitCode(opts *LoginOpts) error {
+	client, err := tclient.New(context.Background(), tclient.Options{
+		AppID:            Appid,
+		AppHash:          AppHash,
+		Session:          &session.FileStorage{Path: opts.SessionPath},
+	})
+	if err != nil {
+		return err
+	}
+	
+	return client.Run(context.Background(), func(ctx context.Context) error {
+		a := client.Auth()
 		ok, err := a.Status(ctx)
 		if err != nil {
 			return err
@@ -75,18 +93,13 @@ func (t *Telegram) Otp(opts *LoginOpts) error {
 			fmt.Print("already loggin h")
 			return nil
 		}
-		hash, err := t.user.Store.Kvd.Get(ctx, "codeHash")
-		if err != nil {
-			return fmt.Errorf("hash not found for %s", opts.Phone)
-		}
-		opts.Hash = string(hash)
-
-		log.Info("signin","otp", opts.Otp,"hash", opts.Hash)
+		log.Info("signin", "otp", opts.Otp, "hash", opts.Hash)
 		_, err = a.SignIn(ctx, opts.Phone, opts.Otp, opts.Hash)
 		if err != nil {
 			log.Error("otp submit", "err", err)
 			return err
 		}
+		log.Info("login success", "user", opts.Phone)
 		return nil
 	})
 }

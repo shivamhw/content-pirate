@@ -1,7 +1,6 @@
 package telegram_cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/shivamhw/content-pirate/pkg/telegram"
@@ -10,30 +9,33 @@ import (
 
 //todo how to preapply telegram logins
 func loginCmd() *cobra.Command {
-	var otp string
+	var loginOpts telegram.LoginOpts
 	cmd := &cobra.Command{
 		Use: "login",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := telegram.NewTelegram(context.Background(), &user)
-			if err != nil {
-				return err
-			}
-			
-			if user.PhoneNumber == "" && otp == ""{
+			if user.Phone == "" && loginOpts.Otp == ""{
 				return fmt.Errorf("please enter either phone nm or otp")
 			}
-
-			err = t.Login(&telegram.LoginOpts{
-				Phone: user.PhoneNumber,
-				Otp: otp,
-			}, false)
+			fmt.Println("starting login flow")
+			hash, err := telegram.Login(&telegram.LoginOpts{
+				Phone: user.Phone,
+				Otp: loginOpts.Otp,
+				Hash: loginOpts.Hash,
+				SessionPath: loginOpts.SessionPath,
+				Force: true,
+			})
+			if hash != "" {
+				fmt.Printf("hash %s", hash)
+			}
 			if err != nil {
 				return err
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&user.PhoneNumber, "phone", "", "phone nm of telegram")
-	cmd.Flags().StringVar(&otp, "otp", "", "otp for login")
+	cmd.Flags().StringVar(&user.Phone, "phone", "", "phone nm of telegram")
+	cmd.Flags().StringVar(&loginOpts.Otp, "otp", "", "otp for login")
+	cmd.Flags().StringVar(&loginOpts.Hash, "hash", "", "hash for login")
+	cmd.Flags().StringVar(&loginOpts.SessionPath, "session-path", "", "path to store session")
 	return cmd
 }

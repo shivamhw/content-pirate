@@ -4,152 +4,134 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/gotd/contrib/bg"
+	"github.com/celestix/gotgproto"
+	"github.com/celestix/gotgproto/sessionMaker"
+	"github.com/go-faster/errors"
+
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
-	"github.com/iyear/tdl/core/logctx"
-	"github.com/iyear/tdl/core/storage"
+
+	"github.com/iyear/tdl/core/tclient"
 	"github.com/iyear/tdl/core/tmedia"
 	"github.com/iyear/tdl/core/util/tutil"
-	"github.com/iyear/tdl/pkg/tclient"
 	"github.com/shivamhw/content-pirate/pkg/log"
 )
 
+var Appid = 15055931
+var AppHash = "021d433426cbb920eeb95164498fe3d3"
+var SessionDir = "./teleLogin"
+var NotAuthorizedErr = errors.New("unauthorized")
+
 type Telegram struct {
-	ctx     context.Context
-	user    *UserData
-	c       *telegram.Client
-	close   *bg.StopFunc
-	manager *peers.Manager
-	store   *Store
+	ctx  context.Context
+	opts *ClientOpts
+	c    *gotgproto.Client
 }
 
-type UserData struct {
-	PhoneNumber string
-	Store       *Store
-}
-
-type Recipient struct {
-	UserId int64
+type ClientOpts struct {
+	Phone            string
+	SessionPath      string
+	ReconnectTimeout time.Duration
 }
 
 type SearchOpts = tg.MessagesGetHistoryRequest
 
-func NewTelegram(ctx context.Context, user *UserData) (*Telegram, error) {
-	store, err := GetOrCreateStore(ctx, user.PhoneNumber)
-	if err != nil {
-		return nil, err
+func (c *ClientOpts) Sanitize() error {
+	if c.Phone == "" {
+		return fmt.Errorf("empty phone number")
 	}
-	user.Store = store
-	client, stop, err := GetClientWithStore(ctx, store)
-	if err != nil {
-		return nil, err
+	if c.SessionPath == "" {
+		abPath, err := filepath.Abs(SessionDir)
+		if err != nil {
+			return fmt.Errorf("error getting abs path %w", err)
+		}
+		t := filepath.Join(abPath, c.Phone, "session.json")
+		log.Infof("using default session path %s", t)
+		c.SessionPath = t
 	}
+	if c.ReconnectTimeout == 0 {
+		c.ReconnectTimeout = time.Second * 5
+	}
+	if ok, _ := os.Stat(c.SessionPath); ok == nil {
+		log.Infof("creating session file")
+		_ = os.MkdirAll(filepath.Dir(c.SessionPath), 0755)
+		f, err := os.Create(c.SessionPath)
+		if err != nil {
+			return err
+		}
+		f.Close()
+	}
+	return nil
+}
 
-	manager := peers.Options{Storage: storage.NewPeers(store.Kvd)}.Build(client.API())
+func NewTelegram(ctx context.Context, opts *ClientOpts) (*Telegram, error) {
+	client, err := gotgproto.NewClient(Appid, AppHash, gotgproto.ClientTypePhone(opts.Phone), &gotgproto.ClientOpts{
+		Session:          sessionMaker.JsonFileSession(opts.SessionPath),
+		NoAutoAuth:       true,
+		DisableCopyright: true,
+		Middlewares:      tclient.NewDefaultMiddlewares(ctx, opts.ReconnectTimeout),
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "session is unauthorized") {
+			return nil, NotAuthorizedErr
+		}
+		return nil, err
+	}
 	t := &Telegram{
-		ctx:     ctx,
-		user:    user,
-		c:       client,
-		store:   store,
-		manager: manager,
-		close:   stop,
+		ctx:  ctx,
+		opts: opts,
+		c:    client,
 	}
-
-	go t.heartBeat()
 
 	return t, nil
 }
 
-func (t *Telegram) heartBeat() error {
-	ti := time.NewTicker(5 * time.Second)
-	for {
-		select {
-		case <-ti.C:
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Errorf("panic recovered for heartbeat", r)
-					}
-				}()
-				log.Infof("heatbeat", "telegram heartbeat")
-				if err := t.c.Ping(t.ctx); err != nil {
-					log.Warnf("heatbeat", "telegram reconnecting")
-					c, stop, err := GetClientWithStore(t.ctx, t.store)
-					if err != nil {
-						log.Errorf("heatbeat", "reconnect failed with telegram")
-					}
-					// (*t.close)()
-					t.c = c
-					t.close = stop
-					t.manager = peers.Options{Storage: storage.NewPeers(t.store.Kvd)}.Build(c.API())
-					log.Infof("heatbeat", "reconnect successfull")
-				}
-			}()
-		}
-	}
-}
-
 func (t *Telegram) WhoAmI() (status *auth.Status, err error) {
 	status, err = t.c.Auth().Status(t.ctx)
-	log.Warnf("err:", "msg", err)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error in WhoAmI, err %w", err)
 	}
-	return status, err
-}
-
-func GetClientWithStore(ctx context.Context, store *Store) (*telegram.Client, *bg.StopFunc, error) {
-	c, err := tclient.New(ctx, tclient.Options{
-		KV:               store.Kvd,
-		UpdateHandler:    nil,
-		ReconnectTimeout: 5 * time.Second,
-	}, false)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	stop, err := bg.Connect(c)
-	if err != nil {
-		return nil, nil, err
-	}
-	return c, &stop, nil
+	return status, nil
 }
 
 func (t *Telegram) SearchChat(c string, q string) (result []tg.Message, err error) {
-	peer, err := tutil.GetInputPeer(t.ctx, t.manager, c)
+	peer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), c)
 	if err != nil {
-		return nil, err
+		return
 	}
 	res, err := t.c.API().MessagesSearch(t.ctx, &tg.MessagesSearchRequest{
-		Q:    q,
+		Q:      q,
 		Filter: &tg.InputMessagesFilterEmpty{},
-		Peer: peer.InputPeer(),
+		Peer:   peer.InputPeer(),
 	})
 	if err != nil {
-		return nil, err
+		return
 	}
 	result, err = convertMsgcls(res)
 	if err != nil {
-		return nil, err
+		return
 	}
-	return result, nil
+	return
 }
 
 func (t *Telegram) ListChats() (result []*Dialog, err error) {
-	result, err = List(logctx.Named(t.ctx, "ls"), t.c, t.user.Store.Kvd, ListOptions{Filter: "true"})
-	if err != nil {
-		return result, err
-	}
-	for _, r := range result {
-		log.Infof(r.VisibleName)
-	}
-	return result, nil
+	return
+	// result, err = List(logctx.Named(t.ctx, "ls"), t.c, t.user.Store.Kvd, ListOptions{Filter: "true"})
+	// if err != nil {
+	// 	return result, err
+	// }
+	// for _, r := range result {
+	// 	log.Infof(r.VisibleName)
+	// }
+	// return result, nil
 }
 
 func (t *Telegram) SearchUsername(q string) (result []*Dialog, err error) {
@@ -175,16 +157,17 @@ func (t *Telegram) SearchUsername(q string) (result []*Dialog, err error) {
 }
 
 func (t *Telegram) GetUserFromUsername(username string) (user *tg.User, err error) {
-	res, err := t.c.API().ContactsResolveUsername(t.ctx, &tg.ContactsResolveUsernameRequest{
-		Username: username,
+	var res *tg.ContactsResolvedPeer
+	err = t.c.Run(context.Background(), func(ctx context.Context) error {
+		if res, err = t.c.API().ContactsResolveUsername(t.ctx, &tg.ContactsResolveUsernameRequest{Username: username}); err != nil {
+			return err
+		}
+		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
 	if res == nil {
 		return nil, fmt.Errorf("user not found %s", username)
 	}
-	return res.Users[0].(*tg.User), nil
+	return res.Users[0].(*tg.User), err
 }
 
 func (t *Telegram) SearchUsers(q string) (result []*Dialog, err error) {
@@ -209,23 +192,21 @@ func (t *Telegram) SearchUsers(q string) (result []*Dialog, err error) {
 
 }
 
-func (t *Telegram) GetChatHistory(chat *Recipient, opts *SearchOpts) (result []tg.Message, err error) {
-	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", chat.UserId))
+func (t *Telegram) GetChatHistory(chatId string, opts *SearchOpts) (result []tg.Message, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), chatId)
 	if err != nil {
-		return nil, err
+		return
 	}
 	opts.Peer = peer.InputPeer()
 	his, err := t.c.API().MessagesGetHistory(t.ctx, opts)
 	if err != nil {
-		return result, err
+		return
 	}
-
 	result, err = convertMsgcls(his)
 	if err != nil {
-		return nil, err
+		return
 	}
-
-	return result, nil
+	return
 }
 
 func convertMsgcls(his tg.MessagesMessagesClass) (result []tg.Message, err error) {
@@ -262,8 +243,8 @@ func convertMsgcls(his tg.MessagesMessagesClass) (result []tg.Message, err error
 	return
 }
 
-func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.MessagesBotCallbackAnswer, err error) {
-	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", chat.UserId))
+func (t *Telegram) ClickBtn(chatId string, msgId int, btnId []byte) (resp *tg.MessagesBotCallbackAnswer, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), chatId)
 	if err != nil {
 		return nil, err
 	}
@@ -281,8 +262,8 @@ func (t *Telegram) ClickBtn(chat *Recipient, msgId int, btnId []byte) (resp *tg.
 	return resp, nil
 }
 
-func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err error) {
-	peer, err := tutil.GetInputPeer(t.ctx, t.manager, fmt.Sprintf("%d", to.UserId))
+func (t *Telegram) SendMsg(to string, msg string) (nMsg *tg.Message, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), to)
 	if err != nil {
 		return nil, err
 	}
@@ -300,11 +281,11 @@ func (t *Telegram) SendMsg(to *Recipient, msg string) (nMsg *tg.Message, err err
 }
 
 func (t *Telegram) ForwardMsg(from string, to string, msg string) (nMsg *tg.Message, err error) {
-	fromPeer, err := tutil.GetInputPeer(t.ctx, t.manager, from)
+	fromPeer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), from)
 	if err != nil {
 		return nil, err
 	}
-	toPeer, err := tutil.GetInputPeer(t.ctx, t.manager, to)
+	toPeer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), to)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +328,7 @@ func GetFilenameFromMessage(msg *tg.Message) string {
 }
 
 func (t *Telegram) GetSingleMessage(msgId int, peer string) (*tg.Message, error) {
-	p, err := tutil.GetInputPeer(t.ctx, t.manager, peer)
+	p, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), peer)
 	if err != nil {
 		return nil, err
 	}
@@ -361,5 +342,5 @@ func (t *Telegram) GetSingleMessage(msgId int, peer string) (*tg.Message, error)
 }
 
 func (t *Telegram) GetClient() *telegram.Client {
-	return t.c
+	return t.c.Client
 }

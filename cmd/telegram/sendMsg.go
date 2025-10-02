@@ -9,11 +9,9 @@ import (
 )
 
 
-var (
-	to telegram.Recipient
-)
 //todo how to preapply telegram logins
 func sendMsgCmd() *cobra.Command {
+	var to string
 	cmd := &cobra.Command{
 		Use: "send",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -22,10 +20,10 @@ func sendMsgCmd() *cobra.Command {
 				return err
 			}
 			if st, _ := t.WhoAmI(); !st.Authorized {
-				return fmt.Errorf("user is not authorized %s", user.PhoneNumber)
+				return fmt.Errorf("user is not authorized %s", user.Phone)
 			}
 
-			chats, err := t.SendMsg(&to, "test msg")
+			chats, err := t.SendMsg(to, "test msg")
 			if err != nil {
 				return err
 			}
@@ -33,7 +31,7 @@ func sendMsgCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().Int64Var(&to.UserId, "user", int64(0), "chat id")
-	cmd.Flags().StringVar(&user.PhoneNumber, "phone", "", "phone nm of telegram")
+	cmd.Flags().StringVar(&to, "to", "", "chat id")
+	cmd.Flags().StringVar(&user.Phone, "phone", "", "phone nm of telegram")
 	return cmd
 }
