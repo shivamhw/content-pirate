@@ -83,18 +83,18 @@ func (t *TelegramSource) scrape(src string, opts ScrapeOpts) (p []Post, err erro
 	})
 	for _, m := range msgs {
 		log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
-		t, err := t.preparePost(src, m)
+		t, err := preparePost(src, m)
 		if err != nil {
 			log.Errorf("failed converting msg to post", "err", err)
 			continue
 		}
 		p = append(p, t)
 	}
-	log.Infof("scrapped", "posts", len(p))
+	log.Infof("scrapped", "src" , src, "posts", len(p))
 	return
 }
 
-func (t *TelegramSource) preparePost(src string, m tg.Message) (p Post, err error) {
+func preparePost(src string, m tg.Message) (p Post, err error) {
 	size := 0
 	mt := commons.MSG_TYPE
 	if m.Media == nil {

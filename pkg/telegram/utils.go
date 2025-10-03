@@ -70,7 +70,7 @@ func ExtractMedia(m tg.MessageMediaClass) (*Media, bool) {
 			Type:         TELEGRAM_IMG,
 		}, ok
 	case *tg.MessageMediaDocument:
-		t := TELEGRAM_MSG
+		t := TELEGRAM_DOC
 		m1, ok := GetDocumentInfo(m)
 		if !ok {
 			return nil, ok
@@ -81,6 +81,8 @@ func ExtractMedia(m tg.MessageMediaClass) (*Media, bool) {
 		case "video":
 			t = TELEGRAM_VID
 		case "application":
+			t = TELEGRAM_DOC
+		default:
 			t = TELEGRAM_DOC
 		}
 		return &Media{

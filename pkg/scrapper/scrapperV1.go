@@ -59,6 +59,7 @@ type Mediums struct {
 	imgq  chan DownloadItemJob
 	vidq  chan DownloadItemJob
 	msgq  chan DownloadItemJob
+	docq  chan DownloadItemJob
 }
 
 var (
@@ -86,6 +87,7 @@ func NewScrapper(cfg *ScrapeCfg) (scr *ScrapperV1, err error) {
 		imgq:  make(chan DownloadItemJob, 10),
 		vidq:  make(chan DownloadItemJob, 10),
 		msgq:  make(chan DownloadItemJob, 10),
+		docq: make(chan DownloadItemJob, 5),
 	}
 	scr = &ScrapperV1{
 		sCfg:         cfg,
@@ -296,6 +298,10 @@ func (s *ScrapperV1) startWorkers() {
 		s.swg.Add(1)
 		go s.queueWorker(i, s.M.msgq)
 	}
+	for i := range s.sCfg.ImgWorkers {
+		s.swg.Add(1)
+		go s.queueWorker(i, s.M.docq)
+	}
 }
 
 func (s *ScrapperV1) Start() {
@@ -309,9 +315,7 @@ LOOP:
 		select {
 		case v, ok := <-s.M.ItemQ:
 			if !ok {
-				close(s.M.imgq)
-				close(s.M.vidq)
-				close(s.M.msgq)
+				s.M.closeAll()
 				break LOOP
 			}
 			switch v.I.Type {
@@ -321,6 +325,8 @@ LOOP:
 				s.M.imgq <- v
 			case commons.MSG_TYPE:
 				s.M.msgq <- v
+			default:
+				s.M.docq <- v
 			}
 		case <-t.C:
 			log.Debugf("scrapper heartbeat......")
@@ -348,6 +354,10 @@ func (cfg *ScrapeCfg) sanitize() error {
 
 func (m *Mediums) closeAll() {
 	close(m.ItemQ)
+	close(m.imgq)
+	close(m.vidq)
+	close(m.msgq)
+	close(m.docq)
 }
 
 func (s *ScrapperV1) Stop() {
