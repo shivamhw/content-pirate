@@ -18,11 +18,15 @@ func (h *logStruct) Handle(ctx context.Context, r slog.Record) error {
 }
 
 var defaultLogger *slog.Logger
+var lvl *slog.LevelVar
 
 func init() {
+	lvl = new(slog.LevelVar)
 	defaultLogger = slog.New(
 		&logStruct{
-			Handler: slog.NewTextHandler(os.Stdout, nil),
+			Handler: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: lvl,
+			}),
 			sourceId: "1",
 		})
 }
@@ -30,9 +34,15 @@ func init() {
 func SetId(s string) {
 	defaultLogger = slog.New(
 		&logStruct{
-			Handler: slog.NewTextHandler(os.Stdout, nil),
+			Handler: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: lvl,
+			}),
 			sourceId: s,
 		})
+}
+
+func SetLevel(l slog.Level) {
+	lvl.Set(l)
 }
 
 func Infof(s string, args ...any) {

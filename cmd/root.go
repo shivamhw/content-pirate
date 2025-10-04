@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 
 	reddit_cmd "github.com/shivamhw/content-pirate/cmd/reddit"
 	telegram_cmd "github.com/shivamhw/content-pirate/cmd/telegram"
+	"github.com/shivamhw/content-pirate/pkg/log"
 	"github.com/spf13/cobra"
 )
 
@@ -22,10 +24,24 @@ func Execute() {
 }
 
 func init() {
+	var lvl string
 
 	rootCmd.AddCommand(helloCmd)
 	rootCmd.AddCommand(reddit_cmd.RedditCmd())
 	rootCmd.AddCommand(telegram_cmd.TelegramCmd())
-
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().StringVarP(&lvl, "log-level", "l", "debug", "set log level")
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		switch lvl {
+		case "debug":
+			log.SetLevel(slog.LevelDebug)
+		case "warn":
+			log.SetLevel(slog.LevelWarn)
+		case "info":
+			log.SetLevel(slog.LevelInfo)
+		case "err":
+			log.SetLevel(slog.LevelError)
+		default:
+			log.SetLevel(slog.LevelDebug)
+		}
+	}
 }

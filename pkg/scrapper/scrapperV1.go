@@ -146,7 +146,7 @@ func (s *ScrapperV1) saveItem(i *DownloadItemJob) (err error) {
 		i.I.Dst = dst
 		key := fmt.Sprintf("%s_%s", st.ID(), i.I.FileName)
 		if _, err := s.cache.Kvd.Get(s.ctx, key); err == nil {
-			log.Warnf("cache hit, file found in store", "file", i.I.FileName, "store", st.ID())
+			log.Warnf("cache hit, file found in store", "file", i.I.FileName, "store", st.ID(), "src", i.I.SourceAc)
 			continue
 		}
 		atomic.AddInt64(&masterCounter, 1)
