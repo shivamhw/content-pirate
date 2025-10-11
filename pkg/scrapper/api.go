@@ -30,8 +30,10 @@ func (s *ScrapperV1) SubmitJob(j Job) (id string, err error) {
 		}
 		//TODO fix this one on priority
 		if s.sCfg.SourceType == sources.SOURCE_TYPE_TELEGRAM {
-			log.Warn("using override to add tele client in store")
-			st.(*store.TelegramStore).C = s.SourceStore.(*sources.TelegramSource).GetClient()
+			if _, ok := st.(*store.TelegramStore); ok {
+				log.Warn("using override to add tele client in store")
+				st.(*store.TelegramStore).C = s.SourceStore.(*sources.TelegramSource).GetClient()
+			}
 		}
 		stores = append(stores, st)
 	}

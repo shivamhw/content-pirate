@@ -59,6 +59,10 @@ func (f *FileStore) Write(i *commons.Item) (string, error) {
 	}
 	defer outfile.Close()
 	_, err = outfile.Write(i.Data)
+	// clear data after saving to disk
+	if err == nil {
+		i.Data = nil
+	}
 	return fullFilePath, err
 }
 
@@ -66,7 +70,7 @@ func (f *FileStore) CreateDir(path string) (err error) {
 	return os.MkdirAll(path, 0755)
 }
 
-func (f *FileStore) ID() (string) {
+func (f *FileStore) ID() string {
 	return f.Dst.BasePath
 }
 func (f *FileStore) CleanAll(path string) error {
