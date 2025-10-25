@@ -76,10 +76,12 @@ func (t *TelegramSource) scrape(src string, opts ScrapeOpts, pChan chan Post) (e
 		log.Warnf("no last msg found for", "src", src, "offset", opts.LastFrom.String())
 	} else {
 		minId = lMsgs[0].ID
+		log.Infof("using last msg", "msg", lMsgs[0])
 	}
 	}
 	iter, err := t.c.GetChatHistoryItr(src, &telegram.SearchOpts{
-		MinID: minId,
+		// MinID: minId,
+		// OffsetDate: int(opts.LastFrom.Unix()),
 	})
 	count := 0
 	for iter.Next(context.Background()) {
@@ -88,6 +90,10 @@ func (t *TelegramSource) scrape(src string, opts ScrapeOpts, pChan chan Post) (e
 		m, ok := msg.Msg.(*tg.Message)
 		if !ok {
 			continue
+		}
+		if (m.ID <= minId) {
+			log.Infof("reached last scrapped msg", "msg id", m.ID, "min id", minId)
+			break
 		}
 		count++
 		t, err := preparePost(src, *m)
