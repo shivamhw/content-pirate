@@ -2,6 +2,7 @@ package floodwait
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -83,6 +84,7 @@ func (w *SimpleWaiter) Handle(next tg.Invoker) telegram.InvokeFunc {
 			if !ok {
 				return err
 			}
+			fmt.Println(err)
 
 			retries++
 
