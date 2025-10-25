@@ -74,7 +74,7 @@ func scrapeCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
+	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 100, "limit")
 	cmd.Flags().StringSliceVar(&ids, "source", []string{}, "source channel ids")
 	cmd.Flags().IntVar(&sCfg.ImgWorkers, "img-worker", 1, "nof img proccesing worker")
 	cmd.Flags().IntVar(&sCfg.VidWorkers, "vid-worker", 1, "nof vid proccesing worker")
