@@ -83,7 +83,7 @@ func (t *TelegramSource) scrape(src string, opts ScrapeOpts, pChan chan Post) (e
 	})
 	count := 0
 	for iter.Next(context.Background()) {
-		log.Infof("scrapping item ", "c", count)
+		log.Debugf("scrapping item ", "c", count)
 		msg := iter.Value()
 		m, ok := msg.Msg.(*tg.Message)
 		if !ok {
@@ -141,7 +141,7 @@ func preparePost(src string, m tg.Message) (p Post, err error) {
 }
 
 func (t *TelegramSource) DownloadItem(ctx context.Context, i *commons.Item) (err error) {
-	log.Infof("downloading", "item", i.Id)
+	log.Debugf("downloading", "item", i.Id)
 	return
 }
 
