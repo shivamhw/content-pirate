@@ -26,6 +26,7 @@ type Post struct {
 }
 
 type ScrapeOpts struct {
+	Full           bool
 	Limit          int
 	Page           int
 	Last           string

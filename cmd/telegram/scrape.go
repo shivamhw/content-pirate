@@ -22,7 +22,7 @@ func scrapeCmd() *cobra.Command {
 	var jIds []string
 	var timeDelta int
 	var waitTime int
-	var skipVid, skipImg, SkipText bool
+	var skipVid, skipImg, SkipText, full bool
 	cmd := &cobra.Command{
 		Use:   "scrape",
 		Long:  "Scrapes chats for videos and imgs",
@@ -41,6 +41,7 @@ func scrapeCmd() *cobra.Command {
 			scrapeOpts.SkipImgs = skipImg
 			scrapeOpts.SkipText = SkipText
 			scrapeOpts.SkipVideos = skipVid
+			scrapeOpts.Full = full
 			dst.PhoneNumber = sCfg.PhoneNumber
 			count := 0
 			for {
@@ -66,7 +67,11 @@ func scrapeCmd() *cobra.Command {
 					fmt.Printf("%s\t%d\n", j.J.SrcAc, len(j.I))
 					count += len(j.I)
 				}
+			    if full {
+					break
+				}
 			}
+			return nil
 		},
 	}
 	cmd.Flags().IntVar(&scrapeOpts.Limit, "limit", 25, "limit")
@@ -76,6 +81,7 @@ func scrapeCmd() *cobra.Command {
 	cmd.Flags().Int64Var(&sCfg.TimeOut, "time-out", 60, "timeout in seconds")
 	cmd.Flags().IntVar(&sCfg.TopicWorkers, "reddit-worker", 15, "nof reddit proccesing worker")
 	cmd.Flags().StringVar(&sCfg.PhoneNumber, "phone", "", "phone nm for telegram")
+	cmd.Flags().BoolVar(&full, "full", false, "scrape full channel")
 	cmd.Flags().IntVar(&timeDelta, "last", 60, "last msgs from x minutes")
 	cmd.Flags().IntVar(&waitTime, "wait", 1, "wait in x minutes")
 	cmd.Flags().IntVar(&dst.ChatId, "dst", 0, "dst channel id")

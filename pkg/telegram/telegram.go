@@ -18,6 +18,7 @@ import (
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/telegram/query"
+	"github.com/gotd/td/telegram/query/messages"
 	"github.com/gotd/td/tg"
 
 	"github.com/iyear/tdl/core/tclient"
@@ -220,7 +221,6 @@ func (t *Telegram) SearchUsers(q string) (result []*Dialog, err error) {
 		}
 	}
 	return result, err
-
 }
 
 func (t *Telegram) GetChatHistory(chatId string, opts *SearchOpts) (result []tg.Message, err error) {
@@ -237,6 +237,41 @@ func (t *Telegram) GetChatHistory(chatId string, opts *SearchOpts) (result []tg.
 	if err != nil {
 		return
 	}
+	return
+}
+
+
+func (t *Telegram) GetChatHistoryItr(chatId string, opts *SearchOpts) (iter *messages.Iterator, err error) {
+	peer, err := tutil.GetInputPeer(t.ctx, peers.Options{}.Build(t.c.API()), chatId)
+	if err != nil {
+		return
+	}
+	q := query.NewQuery(t.c.API()).Messages().GetHistory(peer.InputPeer())
+	iter = messages.NewIterator(q, 100)
+	if opts.OffsetDate != 0 {
+		iter.OffsetDate(opts.OffsetDate)
+	}
+	if opts.MinID != -1 && opts.MinID != 0 {
+		iter.OffsetID(opts.MinID)
+	}
+	return iter, nil
+	// count := 0
+
+	// for iter.Next(t.ctx) {
+	// 	msg := iter.Value()
+	// 	m, ok := msg.Msg.(*tg.Message)
+	// 	if !ok {
+	// 		continue
+	// 	}
+	// 	result = append(result, *m)
+	// 	count++
+	// 	if opts.Limit != 0 && count >= opts.Limit {
+	// 		break
+	// 	}
+	// }
+	// if iter.Err() != nil {	
+	// 	return nil, iter.Err()
+	// }
 	return
 }
 

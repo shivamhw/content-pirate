@@ -25,6 +25,7 @@ type BleveNotifier struct {
 	Url string
 	IdxName string
 	client *http.Client
+	fuse     bool
 }
 
 func NewBleveNotifier(url, idxName string) *BleveNotifier {
@@ -56,6 +57,9 @@ func getTokens(fileName string) string {
 
 func (b *BleveNotifier) Notify(ctx context.Context, item *commons.Item, event NotifierEvent) error {
 	// Construct the request to notify the Bleve index
+	if b.fuse {
+		return nil
+	}
 	url := fmt.Sprintf("%s/%s/%s", b.Url, b.IdxName, item.FileName)
 	tokens := getTokens(item.FileName)
 	id, _ := strconv.Atoi(item.DstId)
@@ -83,6 +87,7 @@ func (b *BleveNotifier) Notify(ctx context.Context, item *commons.Item, event No
 	// Send the request
 	resp, err := b.client.Do(req)
 	if err != nil {
+		b.fuse = true
 		return err
 	}
 	defer resp.Body.Close()

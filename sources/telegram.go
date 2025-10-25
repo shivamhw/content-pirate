@@ -47,50 +47,64 @@ func (t *TelegramSource) ScrapePosts(ctx context.Context, chat string, opts Scra
 	post = make(chan Post, 5)
 
 	log.Infof("scrapping telegram ", "id", chat)
-	posts, err := t.scrape(chat, opts)
-	if err != nil {
-		return nil, err
-	}
-	go func() {
+	go func() error {
 		defer func() {
 			close(post)
 		}()
-		for _, p := range posts {
-			post <- p
+	    err := t.scrape(chat, opts, post)
+		if err != nil {
+			return err
 		}
+		return nil
 	}()
 	return
 }
 
-func (t *TelegramSource) scrape(src string, opts ScrapeOpts) (p []Post, err error) {
+func (t *TelegramSource) scrape(src string, opts ScrapeOpts, pChan chan Post) (err error) {
 	minId := -1
+	if !opts.Full{
+
 	lMsgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
 		Limit:      11,
 		OffsetDate: int(opts.LastFrom.Unix()),
 	})
 	if err != nil {
 		log.Errorf(err.Error())
-		return nil, err
+		return err
 	}
 	if len(lMsgs) <= 0 {
 		log.Warnf("no last msg found for", "src", src, "offset", opts.LastFrom.String())
 	} else {
 		minId = lMsgs[0].ID
 	}
-	msgs, err := t.c.GetChatHistory(src, &telegram.SearchOpts{
-		Limit: opts.Limit,
+	}
+	iter, err := t.c.GetChatHistoryItr(src, &telegram.SearchOpts{
 		MinID: minId,
 	})
-	for _, m := range msgs {
+	count := 0
+	for iter.Next(context.Background()) {
+		log.Infof("scrapping item ", "c", count)
+		msg := iter.Value()
+		m, ok := msg.Msg.(*tg.Message)
+		if !ok {
+			continue
+		}
+		count++
+		t, err := preparePost(src, *m)
+		if opts.Limit != 0 && count >= opts.Limit {
+			break
+		}
+		if iter.Err() != nil {	
+			return iter.Err()
+		}
 		log.Debugf("adding msg as the time criteria is met", "msg time", m.Date, "limit", opts.LastFrom.Unix())
-		t, err := preparePost(src, m)
 		if err != nil {
 			log.Errorf("failed converting msg to post", "err", err)
 			continue
 		}
-		p = append(p, t)
+		pChan <- t
 	}
-	log.Infof("scrapped", "src" , src, "posts", len(p))
+	log.Infof("scrapped", "src" , src, "posts", count)
 	return
 }
 
@@ -127,7 +141,7 @@ func preparePost(src string, m tg.Message) (p Post, err error) {
 }
 
 func (t *TelegramSource) DownloadItem(ctx context.Context, i *commons.Item) (err error) {
-	log.Debugf("downloading", "item", i.Id)
+	log.Infof("downloading", "item", i.Id)
 	return
 }
 
